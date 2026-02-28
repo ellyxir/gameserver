@@ -1,2 +1,8 @@
-clicks: {@num_clicks}
+<.form for={@username_form} phx-change="validate" phx-submit="save">
+  <.input type="text" field={@username_form[:username]} label="Username" />
+  <button type="submit">Save</button>
+</.form>
+
+<p>user: {@user}</p>
+<p>clicks: {@num_clicks}</p>
 <button phx-click="inc_clicks">+</button>

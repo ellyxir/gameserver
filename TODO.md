@@ -1,4 +1,5 @@
-- [ ] Create LiveView UI for player to "Login". They just enter their username as ID, no auth.
+- [x] Create LiveView UI for player to "Login". They just enter their username as ID, no auth.
+- [ ] Add validate handler for username form using ecto changesets
 - [ ] Create LevelServer that accepts a join message and keeps track of joined users
 - [ ] Login form sends "join" message to LevelServer, a single genserver
 - [ ] Show list of other Joined users in LiveView
