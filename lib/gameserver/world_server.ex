@@ -41,6 +41,23 @@ defmodule Gameserver.WorldServer do
     GenServer.call(server, {:leave, user})
   end
 
+  @doc """
+  Returns users in the world as `{user_id, username}` tuples.
+
+  - `who()` - returns all users
+  - `who(user_id)` - returns matching user or empty list
+  - `who([user_ids])` - returns matching users
+  """
+  @spec who(GenServer.server()) :: [{Ecto.UUID.t(), String.t()}]
+  def who(server \\ __MODULE__) do
+    GenServer.call(server, :who)
+  end
+
+  @spec who(Ecto.UUID.t() | [Ecto.UUID.t()], GenServer.server()) :: [{Ecto.UUID.t(), String.t()}]
+  def who(id_or_ids, server) do
+    GenServer.call(server, {:who, id_or_ids})
+  end
+
   # Server callbacks
 
   @impl GenServer
@@ -64,5 +81,39 @@ defmodule Gameserver.WorldServer do
     else
       {:reply, {:error, :not_found}, state}
     end
+  end
+
+  @impl GenServer
+  def handle_call(:who, _from, %__MODULE__{users: users} = state) do
+    result =
+      users
+      |> Map.values()
+      |> Enum.map(fn %User{id: id, username: username} -> {id, username} end)
+
+    {:reply, result, state}
+  end
+
+  @impl GenServer
+  def handle_call({:who, ids}, _from, %__MODULE__{users: users} = state) when is_list(ids) do
+    result =
+      Enum.flat_map(ids, fn id ->
+        case Map.get(users, id) do
+          nil -> []
+          %User{id: user_id, username: username} -> [{user_id, username}]
+        end
+      end)
+
+    {:reply, result, state}
+  end
+
+  @impl GenServer
+  def handle_call({:who, id}, _from, %__MODULE__{users: users} = state) do
+    result =
+      case Map.get(users, id) do
+        nil -> []
+        %User{id: user_id, username: username} -> [{user_id, username}]
+      end
+
+    {:reply, result, state}
   end
 end
