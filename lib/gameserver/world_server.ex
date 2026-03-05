@@ -1,6 +1,6 @@
 defmodule Gameserver.WorldServer do
   @moduledoc """
-  A named GenServer that tracks which users' presence and location in the world.
+  A named GenServer that tracks user presence and location in the world.
   """
 
   use GenServer
@@ -12,6 +12,8 @@ defmodule Gameserver.WorldServer do
 
   @typedoc "Error reasons for join/leave operations"
   @type error_reason() :: :already_joined | :not_found
+
+  @presence_topic "world:presence"
 
   # Client API
 
@@ -58,6 +60,14 @@ defmodule Gameserver.WorldServer do
     GenServer.call(server, {:who, id_or_ids})
   end
 
+  @doc """
+  Returns the PubSub topic for presence updates.
+
+  Subscribe to receive `{:user_joined, user}` and `{:user_left, user}` messages.
+  """
+  @spec presence_topic() :: String.t()
+  def presence_topic, do: @presence_topic
+
   # Server callbacks
 
   @impl GenServer
@@ -70,13 +80,15 @@ defmodule Gameserver.WorldServer do
     if Map.has_key?(users, id) do
       {:reply, {:error, :already_joined}, state}
     else
+      broadcast_presence({:user_joined, user})
       {:reply, :ok, %{state | users: Map.put(users, id, user)}}
     end
   end
 
   @impl GenServer
-  def handle_call({:leave, %User{id: id}}, _from, %__MODULE__{users: users} = state) do
+  def handle_call({:leave, %User{id: id} = user}, _from, %__MODULE__{users: users} = state) do
     if Map.has_key?(users, id) do
+      broadcast_presence({:user_left, user})
       {:reply, :ok, %{state | users: Map.delete(users, id)}}
     else
       {:reply, {:error, :not_found}, state}
@@ -115,5 +127,12 @@ defmodule Gameserver.WorldServer do
       end
 
     {:reply, result, state}
+  end
+
+  # Private helpers
+
+  @spec broadcast_presence({:user_joined | :user_left, User.t()}) :: :ok
+  defp broadcast_presence(message) do
+    Phoenix.PubSub.broadcast(Gameserver.PubSub, @presence_topic, message)
   end
 end

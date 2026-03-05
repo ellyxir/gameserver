@@ -1,0 +1,9 @@
+<h1>Online Users</h1>
+
+<p>Welcome, {@username}!</p>
+
+<ul>
+  <%= for {_id, username} <- @users do %>
+    <li>{username}</li>
+  <% end %>
+</ul>
