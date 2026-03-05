@@ -36,11 +36,11 @@ defmodule Gameserver.WorldServer do
   end
 
   @doc """
-  Removes a user from the world.
+  Removes a user from the world by user_id.
   """
-  @spec leave(User.t(), GenServer.server()) :: :ok | {:error, error_reason()}
-  def leave(%User{} = user, server \\ __MODULE__) do
-    GenServer.call(server, {:leave, user})
+  @spec leave(Ecto.UUID.t(), GenServer.server()) :: :ok | {:error, error_reason()}
+  def leave(user_id, server \\ __MODULE__) when is_binary(user_id) do
+    GenServer.call(server, {:leave, user_id})
   end
 
   @doc """
@@ -86,12 +86,14 @@ defmodule Gameserver.WorldServer do
   end
 
   @impl GenServer
-  def handle_call({:leave, %User{id: id} = user}, _from, %__MODULE__{users: users} = state) do
-    if Map.has_key?(users, id) do
-      broadcast_presence({:user_left, user})
-      {:reply, :ok, %{state | users: Map.delete(users, id)}}
-    else
-      {:reply, {:error, :not_found}, state}
+  def handle_call({:leave, user_id}, _from, %__MODULE__{users: users} = state) do
+    case Map.pop(users, user_id) do
+      {nil, _users} ->
+        {:reply, {:error, :not_found}, state}
+
+      {user, remaining_users} ->
+        broadcast_presence({:user_left, user})
+        {:reply, :ok, %{state | users: remaining_users}}
     end
   end
 

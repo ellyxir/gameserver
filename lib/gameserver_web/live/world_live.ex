@@ -43,9 +43,8 @@ defmodule GameserverWeb.WorldLive do
   @impl Phoenix.LiveView
   def terminate(_reason, socket) do
     case socket.assigns do
-      %{user_id: user_id, username: username} when is_binary(user_id) ->
-        user = %Gameserver.User{id: user_id, username: username}
-        WorldServer.leave(user)
+      %{user_id: user_id} when is_binary(user_id) ->
+        WorldServer.leave(user_id)
 
       _ ->
         :ok

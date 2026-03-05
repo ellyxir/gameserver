@@ -95,7 +95,7 @@ defmodule GameserverWeb.WorldLiveTest do
       assert html =~ "leavinguser"
 
       # Bob leaves
-      :ok = WorldServer.leave(bob)
+      :ok = WorldServer.leave(bob.id)
 
       # Wait for pubsub update
       html = render(view)

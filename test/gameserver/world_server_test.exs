@@ -33,7 +33,7 @@ defmodule Gameserver.WorldServerTest do
       {:ok, user} = User.new("alice")
 
       :ok = WorldServer.join(user, server)
-      :ok = WorldServer.leave(user, server)
+      :ok = WorldServer.leave(user.id, server)
       assert :ok = WorldServer.join(user, server)
     end
   end
@@ -43,13 +43,13 @@ defmodule Gameserver.WorldServerTest do
       {:ok, user} = User.new("alice")
       :ok = WorldServer.join(user, server)
 
-      assert :ok = WorldServer.leave(user, server)
+      assert :ok = WorldServer.leave(user.id, server)
     end
 
     test "returns error when user not in world", %{server: server} do
-      {:ok, user} = User.new("alice")
+      fake_id = Ecto.UUID.generate()
 
-      assert {:error, :not_found} = WorldServer.leave(user, server)
+      assert {:error, :not_found} = WorldServer.leave(fake_id, server)
     end
   end
 
@@ -140,16 +140,16 @@ defmodule Gameserver.WorldServerTest do
       :ok = WorldServer.join(alice, server)
       assert_receive {:user_joined, ^alice}
 
-      :ok = WorldServer.leave(alice, server)
+      :ok = WorldServer.leave(alice.id, server)
 
       assert_receive {:user_left, ^alice}
     end
 
     test "does not broadcast on failed leave", %{server: server} do
       Phoenix.PubSub.subscribe(Gameserver.PubSub, "world:presence")
-      {:ok, alice} = User.new("alice")
+      fake_id = Ecto.UUID.generate()
 
-      {:error, :not_found} = WorldServer.leave(alice, server)
+      {:error, :not_found} = WorldServer.leave(fake_id, server)
 
       refute_receive {:user_left, _}
     end
