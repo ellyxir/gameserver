@@ -59,5 +59,22 @@ defmodule GameserverWeb.GameLiveTest do
 
       assert html =~ "should be at least 3 character"
     end
+
+    test "shows error when username is already taken", %{conn: conn} do
+      unique_name = "taken#{System.unique_integer([:positive])}"
+      {:ok, existing_user} = Gameserver.User.new(unique_name)
+      :ok = Gameserver.WorldServer.join(existing_user)
+
+      {:ok, view, _html} = live(conn, ~p"/game")
+
+      html =
+        view
+        |> element("form")
+        |> render_submit(%{login_form: %{username: unique_name}})
+
+      # Should stay on the form (no redirect) and show an error
+      refute_redirected(view, ~p"/world")
+      assert html =~ "username not available", "Expected error message, got: #{html}"
+    end
   end
 end

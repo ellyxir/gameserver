@@ -11,7 +11,7 @@ defmodule Gameserver.WorldServer do
   defstruct users: %{}
 
   @typedoc "Error reasons for join/leave operations"
-  @type error_reason() :: :already_joined | :not_found
+  @type error_reason() :: :already_joined | :not_found | :username_not_available
 
   @presence_topic "world:presence"
 
@@ -29,6 +29,9 @@ defmodule Gameserver.WorldServer do
 
   @doc """
   Adds a user to the world.
+
+  Returns `{:error, :already_joined}` if the user ID is already in the world,
+  or `{:error, :username_not_available}` if another user has the same username.
   """
   @spec join(User.t(), GenServer.server()) :: :ok | {:error, error_reason()}
   def join(%User{} = user, server \\ __MODULE__) do
@@ -76,12 +79,21 @@ defmodule Gameserver.WorldServer do
   end
 
   @impl GenServer
-  def handle_call({:join, %User{id: id} = user}, _from, %__MODULE__{users: users} = state) do
-    if Map.has_key?(users, id) do
-      {:reply, {:error, :already_joined}, state}
-    else
-      broadcast_presence({:user_joined, user})
-      {:reply, :ok, %{state | users: Map.put(users, id, user)}}
+  def handle_call(
+        {:join, %User{id: id, username: username} = user},
+        _from,
+        %__MODULE__{users: users} = state
+      ) do
+    cond do
+      Map.has_key?(users, id) ->
+        {:reply, {:error, :already_joined}, state}
+
+      username_taken?(users, username) ->
+        {:reply, {:error, :username_not_available}, state}
+
+      true ->
+        broadcast_presence({:user_joined, user})
+        {:reply, :ok, %{state | users: Map.put(users, id, user)}}
     end
   end
 
@@ -132,6 +144,11 @@ defmodule Gameserver.WorldServer do
   end
 
   # Private helpers
+
+  @spec username_taken?(%{Ecto.UUID.t() => User.t()}, String.t()) :: boolean()
+  defp username_taken?(users, username) do
+    Enum.any?(users, fn {_id, user} -> user.username == username end)
+  end
 
   @spec broadcast_presence({:user_joined | :user_left, User.t()}) :: :ok
   defp broadcast_presence(message) do

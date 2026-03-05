@@ -36,6 +36,14 @@ defmodule GameserverWeb.GameLive do
 
         {:noreply, assign(socket, login_form: to_form(changeset, as: :login_form))}
 
+      {:error, :username_not_available} ->
+        changeset =
+          username
+          |> User.validate_username()
+          |> Ecto.Changeset.add_error(:username, "username not available")
+
+        {:noreply, assign(socket, login_form: to_form(changeset, as: :login_form))}
+
       {:error, _reason} ->
         changeset = User.validate_username(username)
         {:noreply, assign(socket, login_form: to_form(changeset, as: :login_form))}

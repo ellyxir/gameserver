@@ -29,6 +29,23 @@ defmodule Gameserver.WorldServerTest do
       assert {:error, :already_joined} = WorldServer.join(user, server)
     end
 
+    test "returns error when username already taken", %{server: server} do
+      {:ok, alice1} = User.new("alice")
+      {:ok, alice2} = User.new("alice")
+
+      :ok = WorldServer.join(alice1, server)
+      assert {:error, :username_not_available} = WorldServer.join(alice2, server)
+    end
+
+    test "allows same username after original user leaves", %{server: server} do
+      {:ok, alice1} = User.new("alice")
+      {:ok, alice2} = User.new("alice")
+
+      :ok = WorldServer.join(alice1, server)
+      :ok = WorldServer.leave(alice1.id, server)
+      assert :ok = WorldServer.join(alice2, server)
+    end
+
     test "allows rejoin after leaving", %{server: server} do
       {:ok, user} = User.new("alice")
 
@@ -131,6 +148,18 @@ defmodule Gameserver.WorldServerTest do
       # Try to join again - should fail
       {:error, :already_joined} = WorldServer.join(alice, server)
 
+      refute_receive {:user_joined, _}
+    end
+
+    test "does not broadcast on username collision", %{server: server} do
+      Phoenix.PubSub.subscribe(Gameserver.PubSub, "world:presence")
+      {:ok, alice1} = User.new("alice")
+      {:ok, alice2} = User.new("alice")
+
+      :ok = WorldServer.join(alice1, server)
+      assert_receive {:user_joined, ^alice1}
+
+      {:error, :username_not_available} = WorldServer.join(alice2, server)
       refute_receive {:user_joined, _}
     end
 
