@@ -3,15 +3,18 @@ defmodule GameserverWeb.GameLive do
 
   require Logger
 
+  @impl Phoenix.LiveView
   def mount(_params, _session, socket) do
     username_form = to_form(%{"username" => ""})
     {:ok, assign(socket, num_clicks: 1, user: nil, username_form: username_form)}
   end
 
+  @impl Phoenix.LiveView
   def handle_event("inc_clicks", _params, socket) do
     {:noreply, update(socket, :num_clicks, &(&1 + 1))}
   end
 
+  # "save" button - user wants to use this username
   def handle_event("save", %{"username" => username} = _params, socket) do
     Logger.info("GameLive SAVE event: username #{inspect(username)}")
     {:noreply, assign(socket, user: username)}
