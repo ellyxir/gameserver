@@ -37,6 +37,17 @@ defmodule Gameserver.User do
     end
   end
 
+  @doc """
+  validates the username
+  returns a changeset that LiveView can use
+  """
+  @spec validate_username(String.t()) :: Ecto.Changeset.t()
+  def validate_username(username) do
+    %{username: username}
+    |> changeset()
+    |> Map.put(:action, :validate)
+  end
+
   # return changeset for username
   @spec changeset(map()) :: Ecto.Changeset.t()
   defp changeset(params) when is_map(params) do

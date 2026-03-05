@@ -40,4 +40,32 @@ defmodule Gameserver.UserTest do
       assert {:ok, %User{username: "Player123"}} = User.new("Player123")
     end
   end
+
+  describe "validate_username/1" do
+    test "returns changeset with action :validate" do
+      changeset = User.validate_username("alice")
+      assert changeset.action == :validate
+    end
+
+    test "valid username returns valid changeset" do
+      changeset = User.validate_username("alice")
+      assert changeset.valid?
+    end
+
+    test "invalid username returns invalid changeset with errors" do
+      changeset = User.validate_username("")
+      refute changeset.valid?
+      assert {:username, _} = hd(changeset.errors)
+    end
+
+    test "too short username has error" do
+      changeset = User.validate_username("ab")
+      refute changeset.valid?
+    end
+
+    test "too long username has error" do
+      changeset = User.validate_username("abcdefghijklmnopqrstu")
+      refute changeset.valid?
+    end
+  end
 end
