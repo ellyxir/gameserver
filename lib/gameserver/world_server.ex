@@ -1,6 +1,6 @@
 defmodule Gameserver.WorldServer do
   @moduledoc """
-  A named GenServer that tracks which users' presence and location in the world.
+  A named GenServer that tracks user presence and location in the world.
   """
 
   use GenServer

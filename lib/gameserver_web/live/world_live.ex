@@ -31,9 +31,13 @@ defmodule GameserverWeb.WorldLive do
     {:noreply, assign(socket, users: users)}
   end
 
-  def handle_info({:user_left, _user}, socket) do
-    users = WorldServer.who()
-    {:noreply, assign(socket, users: users)}
+  def handle_info({:user_left, user}, socket) do
+    if user.id == socket.assigns.user_id do
+      {:noreply, push_navigate(socket, to: ~p"/game")}
+    else
+      users = WorldServer.who()
+      {:noreply, assign(socket, users: users)}
+    end
   end
 
   @spec validate_user(String.t() | nil) :: {:ok, String.t()} | :error
