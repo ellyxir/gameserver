@@ -14,8 +14,7 @@ defmodule Gameserver.Application do
        repos: Application.fetch_env!(:gameserver, :ecto_repos), skip: skip_migrations?()},
       {DNSCluster, query: Application.get_env(:gameserver, :dns_cluster_query) || :ignore},
       {Phoenix.PubSub, name: Gameserver.PubSub},
-      # Start a worker by calling: Gameserver.Worker.start_link(arg)
-      # {Gameserver.Worker, arg},
+      Gameserver.WorldServer,
       # Start to serve requests, typically the last entry
       GameserverWeb.Endpoint
     ]
