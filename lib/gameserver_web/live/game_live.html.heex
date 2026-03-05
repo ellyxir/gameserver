@@ -1,8 +1,4 @@
 <.form for={@login_form} phx-change="validate" phx-submit="save">
   <.input type="text" field={@login_form[:username]} label="Username" />
-  <button type="submit">Save</button>
+  <button type="submit">Join World</button>
 </.form>
-
-<p>user: {@user}</p>
-<p>clicks: {@num_clicks}</p>
-<button phx-click="inc_clicks">+</button>

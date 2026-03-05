@@ -19,6 +19,7 @@ defmodule GameserverWeb.Router do
 
     get "/", PageController, :home
     live "/game", GameLive
+    live "/world", WorldLive
   end
 
   # Other scopes may use custom stacks.
