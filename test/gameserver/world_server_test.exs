@@ -109,4 +109,49 @@ defmodule Gameserver.WorldServerTest do
       assert [{alice.id, "alice"}] == result
     end
   end
+
+  describe "pubsub broadcasts" do
+    test "broadcasts user_joined on successful join", %{server: server} do
+      Phoenix.PubSub.subscribe(Gameserver.PubSub, "world:presence")
+      {:ok, alice} = User.new("alice")
+
+      :ok = WorldServer.join(alice, server)
+
+      assert_receive {:user_joined, ^alice}
+    end
+
+    test "does not broadcast on failed join", %{server: server} do
+      Phoenix.PubSub.subscribe(Gameserver.PubSub, "world:presence")
+      {:ok, alice} = User.new("alice")
+      :ok = WorldServer.join(alice, server)
+
+      # Clear the first message
+      assert_receive {:user_joined, ^alice}
+
+      # Try to join again - should fail
+      {:error, :already_joined} = WorldServer.join(alice, server)
+
+      refute_receive {:user_joined, _}
+    end
+
+    test "broadcasts user_left on successful leave", %{server: server} do
+      Phoenix.PubSub.subscribe(Gameserver.PubSub, "world:presence")
+      {:ok, alice} = User.new("alice")
+      :ok = WorldServer.join(alice, server)
+      assert_receive {:user_joined, ^alice}
+
+      :ok = WorldServer.leave(alice, server)
+
+      assert_receive {:user_left, ^alice}
+    end
+
+    test "does not broadcast on failed leave", %{server: server} do
+      Phoenix.PubSub.subscribe(Gameserver.PubSub, "world:presence")
+      {:ok, alice} = User.new("alice")
+
+      {:error, :not_found} = WorldServer.leave(alice, server)
+
+      refute_receive {:user_left, _}
+    end
+  end
 end
