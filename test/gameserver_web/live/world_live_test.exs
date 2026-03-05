@@ -44,6 +44,29 @@ defmodule GameserverWeb.WorldLiveTest do
     end
   end
 
+  describe "disconnect" do
+    test "calls leave on WorldServer when LiveView terminates", %{conn: conn} do
+      {:ok, user} = User.new("disconnectuser")
+      :ok = WorldServer.join(user)
+
+      Phoenix.PubSub.subscribe(Gameserver.PubSub, WorldServer.presence_topic())
+
+      {:ok, view, _html} = live(conn, ~p"/world?user_id=#{user.id}")
+
+      # Verify user is in the world
+      assert [{_, "disconnectuser"}] = WorldServer.who(user.id, WorldServer)
+
+      # Terminate the LiveView (simulates browser tab close)
+      GenServer.stop(view.pid)
+
+      # Should broadcast user_left
+      assert_receive {:user_left, ^user}
+
+      # User should be removed from WorldServer
+      assert [] = WorldServer.who(user.id, WorldServer)
+    end
+  end
+
   describe "pubsub updates" do
     test "updates when new user joins", %{conn: conn} do
       {:ok, alice} = User.new("pubsubalice")

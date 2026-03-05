@@ -40,6 +40,18 @@ defmodule GameserverWeb.WorldLive do
     end
   end
 
+  @impl Phoenix.LiveView
+  def terminate(_reason, socket) do
+    case socket.assigns do
+      %{user_id: user_id, username: username} when is_binary(user_id) ->
+        user = %Gameserver.User{id: user_id, username: username}
+        WorldServer.leave(user)
+
+      _ ->
+        :ok
+    end
+  end
+
   @spec validate_user(String.t() | nil) :: {:ok, String.t()} | :error
   defp validate_user(nil), do: :error
 
