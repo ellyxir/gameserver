@@ -12,7 +12,7 @@ defmodule Gameserver.WorldServer do
   defstruct players: %{}, map: nil
 
   @typedoc "Error reasons for join/leave operations"
-  @type error_reason() :: :already_joined | :not_found | :username_not_available
+  @type error_reason() :: :already_joined | :not_found | :username_not_available | :no_spawn_point
 
   @presence_topic "world:presence"
 

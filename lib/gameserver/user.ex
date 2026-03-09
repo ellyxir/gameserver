@@ -1,6 +1,6 @@
 defmodule Gameserver.User do
   @moduledoc """
-  User is used for referencing the user account and is not the `Player` object (not implemented yet).
+  Represents a user account. See `Gameserver.Player` for the in-game representation.
   """
 
   import Ecto.Changeset
