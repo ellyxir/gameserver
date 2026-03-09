@@ -147,3 +147,9 @@ defmodule Gameserver.Map do
   defp tile_to_char(:floor), do: "."
   defp tile_to_char(:door), do: "+"
 end
+
+defimpl String.Chars, for: Gameserver.Map do
+  def to_string(map) do
+    map |> Gameserver.Map.to_ascii() |> Enum.join("\n")
+  end
+end

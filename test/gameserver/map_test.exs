@@ -161,4 +161,11 @@ defmodule Gameserver.MapTest do
       assert GameMap.to_ascii(map) == ["#+#"]
     end
   end
+
+  describe "String.Chars protocol" do
+    test "to_string/1 returns ascii rows joined by newlines" do
+      map = GameMap.new(3, 2)
+      assert to_string(map) == "###\n###"
+    end
+  end
 end
