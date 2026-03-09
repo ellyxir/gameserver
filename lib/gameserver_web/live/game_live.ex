@@ -25,7 +25,7 @@ defmodule GameserverWeb.GameLive do
   # "save" button - user wants to use this username
   def handle_event("save", %{"login_form" => %{"username" => username}}, socket) do
     with {:ok, user} <- User.new(username),
-         :ok <- WorldServer.join(user) do
+         {:ok, _position} <- WorldServer.join(user) do
       {:noreply, push_navigate(socket, to: ~p"/world?user_id=#{user.id}")}
     else
       {:error, :already_joined} ->

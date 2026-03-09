@@ -21,7 +21,7 @@ defmodule GameserverWeb.WorldLiveTest do
 
     test "renders world page when user is valid", %{conn: conn} do
       {:ok, user} = User.new("validuser")
-      :ok = WorldServer.join(user)
+      {:ok, _position} = WorldServer.join(user)
 
       {:ok, _view, html} = live(conn, ~p"/world?user_id=#{user.id}")
 
@@ -34,8 +34,8 @@ defmodule GameserverWeb.WorldLiveTest do
     test "shows all online users", %{conn: conn} do
       {:ok, alice} = User.new("alice")
       {:ok, bob} = User.new("bob")
-      :ok = WorldServer.join(alice)
-      :ok = WorldServer.join(bob)
+      {:ok, _position} = WorldServer.join(alice)
+      {:ok, _position} = WorldServer.join(bob)
 
       {:ok, _view, html} = live(conn, ~p"/world?user_id=#{alice.id}")
 
@@ -47,7 +47,7 @@ defmodule GameserverWeb.WorldLiveTest do
   describe "disconnect" do
     test "calls leave on WorldServer when LiveView terminates", %{conn: conn} do
       {:ok, user} = User.new("disconnectuser")
-      :ok = WorldServer.join(user)
+      {:ok, _position} = WorldServer.join(user)
 
       Phoenix.PubSub.subscribe(Gameserver.PubSub, WorldServer.presence_topic())
 
@@ -70,7 +70,7 @@ defmodule GameserverWeb.WorldLiveTest do
   describe "pubsub updates" do
     test "updates when new user joins", %{conn: conn} do
       {:ok, alice} = User.new("pubsubalice")
-      :ok = WorldServer.join(alice)
+      {:ok, _position} = WorldServer.join(alice)
 
       {:ok, view, html} = live(conn, ~p"/world?user_id=#{alice.id}")
       assert html =~ "pubsubalice"
@@ -78,7 +78,7 @@ defmodule GameserverWeb.WorldLiveTest do
 
       # Simulate another user joining
       {:ok, bob} = User.new("newuser")
-      :ok = WorldServer.join(bob)
+      {:ok, _position} = WorldServer.join(bob)
 
       # Wait for pubsub update
       html = render(view)
@@ -88,8 +88,8 @@ defmodule GameserverWeb.WorldLiveTest do
     test "updates when user leaves", %{conn: conn} do
       {:ok, alice} = User.new("pubsubalice2")
       {:ok, bob} = User.new("leavinguser")
-      :ok = WorldServer.join(alice)
-      :ok = WorldServer.join(bob)
+      {:ok, _position} = WorldServer.join(alice)
+      {:ok, _position} = WorldServer.join(bob)
 
       {:ok, view, html} = live(conn, ~p"/world?user_id=#{alice.id}")
       assert html =~ "leavinguser"
