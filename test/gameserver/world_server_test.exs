@@ -143,6 +143,25 @@ defmodule Gameserver.WorldServerTest do
     end
   end
 
+  describe "players/1" do
+    test "returns empty list when no players", %{server: server} do
+      assert [] = WorldServer.players(server)
+    end
+
+    test "returns all players with positions", %{server: server} do
+      {:ok, alice} = User.new("alice")
+      {:ok, bob} = User.new("bob")
+      {:ok, alice_pos} = WorldServer.join(alice, server)
+      {:ok, bob_pos} = WorldServer.join(bob, server)
+
+      result = WorldServer.players(server)
+
+      assert length(result) == 2
+      assert {alice.id, "alice", alice_pos} in result
+      assert {bob.id, "bob", bob_pos} in result
+    end
+  end
+
   describe "pubsub broadcasts" do
     test "broadcasts user_joined on successful join", %{server: server} do
       Phoenix.PubSub.subscribe(Gameserver.PubSub, "world:presence")

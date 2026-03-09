@@ -66,6 +66,14 @@ defmodule Gameserver.WorldServer do
   end
 
   @doc """
+  Returns all players with their positions as `{user_id, username, position}` tuples.
+  """
+  @spec players(GenServer.server()) :: [{Ecto.UUID.t(), String.t(), GameMap.coord()}]
+  def players(server \\ __MODULE__) do
+    GenServer.call(server, :players)
+  end
+
+  @doc """
   Returns the position of a player by user_id.
   """
   @spec get_position(Ecto.UUID.t(), GenServer.server()) ::
@@ -138,6 +146,16 @@ defmodule Gameserver.WorldServer do
   end
 
   @impl GenServer
+  def handle_call(:players, _from, %__MODULE__{players: players} = state) do
+    result =
+      players
+      |> Map.values()
+      |> Enum.map(&player_to_tuple_with_position/1)
+
+    {:reply, result, state}
+  end
+
+  @impl GenServer
   def handle_call({:who, ids}, _from, %__MODULE__{players: players} = state) when is_list(ids) do
     result =
       Enum.flat_map(ids, fn id ->
@@ -177,6 +195,14 @@ defmodule Gameserver.WorldServer do
   @spec player_to_tuple(Player.t()) :: {Ecto.UUID.t(), String.t()}
   defp player_to_tuple(%Player{user: %User{id: id, username: username}}) do
     {id, username}
+  end
+
+  @spec player_to_tuple_with_position(Player.t()) :: {Ecto.UUID.t(), String.t(), GameMap.coord()}
+  defp player_to_tuple_with_position(%Player{
+         user: %User{id: id, username: username},
+         position: position
+       }) do
+    {id, username, position}
   end
 
   @spec username_taken?(%{Ecto.UUID.t() => Player.t()}, String.t()) :: boolean()
