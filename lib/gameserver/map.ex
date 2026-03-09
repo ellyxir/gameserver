@@ -185,6 +185,19 @@ defmodule Gameserver.Map do
     end
   end
 
+  @doc """
+  Returns the spawn point for the map.
+
+  Player spawns at the :upstairs tile. We return the first one we find.
+  """
+  @spec get_spawn_point(t()) :: {:ok, coord()} | {:error, :no_spawn_point}
+  def get_spawn_point(%__MODULE__{tiles: tiles}) do
+    case Enum.find(tiles, fn {_coord, tile} -> tile == :upstairs end) do
+      nil -> {:error, :no_spawn_point}
+      {coord, :upstairs} -> {:ok, coord}
+    end
+  end
+
   @spec tile_to_char(tile()) :: String.t()
   for {tile, c} <- @tile_chars do
     defp tile_to_char(unquote(tile)), do: unquote(c)

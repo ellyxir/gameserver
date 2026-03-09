@@ -92,8 +92,15 @@ defmodule Gameserver.WorldServer do
         {:reply, {:error, :username_not_available}, state}
 
       true ->
-        broadcast_presence({:user_joined, user})
-        {:reply, :ok, %{state | users: Map.put(users, id, user)}}
+        case GameMap.get_spawn_point(map) do
+          {:ok, position} ->
+            player = Player.new(user, position)
+            broadcast_presence({:user_joined, user})
+            {:reply, {:ok, position}, %{state | players: Map.put(players, id, player)}}
+
+          {:error, :no_spawn_point} ->
+            {:reply, {:error, :no_spawn_point}, state}
+        end
     end
   end
 
