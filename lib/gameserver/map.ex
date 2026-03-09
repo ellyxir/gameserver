@@ -131,7 +131,7 @@ defmodule Gameserver.Map do
   @doc """
   Converts the map to a list of ASCII strings, one per row.
 
-  Walls render as `#`, floors as `.`.
+  Walls render as `#`, floors as `.`, doors as `+`.
   """
   @spec to_ascii(t()) :: [String.t()]
   def to_ascii(%__MODULE__{width: width, height: height} = map) do

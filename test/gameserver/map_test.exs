@@ -155,5 +155,10 @@ defmodule Gameserver.MapTest do
       map = GameMap.new(3, 1, default: :floor)
       assert GameMap.to_ascii(map) == ["..."]
     end
+
+    test "renders doors as plus signs" do
+      map = GameMap.new(3, 1) |> GameMap.set_tile(1, 0, :door)
+      assert GameMap.to_ascii(map) == ["#+#"]
+    end
   end
 end
