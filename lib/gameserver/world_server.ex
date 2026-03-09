@@ -66,6 +66,15 @@ defmodule Gameserver.WorldServer do
   end
 
   @doc """
+  Returns the position of a player by user_id.
+  """
+  @spec get_position(Ecto.UUID.t(), GenServer.server()) ::
+          {:ok, GameMap.coord()} | {:error, :not_found}
+  def get_position(user_id, server \\ __MODULE__) when is_binary(user_id) do
+    GenServer.call(server, {:get_position, user_id})
+  end
+
+  @doc """
   Returns the PubSub topic for presence updates.
 
   Subscribe to receive `{:user_joined, user}` and `{:user_left, user}` messages.
@@ -147,6 +156,17 @@ defmodule Gameserver.WorldServer do
       case Map.get(players, id) do
         nil -> []
         player -> [player_to_tuple(player)]
+      end
+
+    {:reply, result, state}
+  end
+
+  @impl GenServer
+  def handle_call({:get_position, user_id}, _from, %__MODULE__{players: players} = state) do
+    result =
+      case Map.get(players, user_id) do
+        nil -> {:error, :not_found}
+        %Player{position: position} -> {:ok, position}
       end
 
     {:reply, result, state}

@@ -128,6 +128,21 @@ defmodule Gameserver.WorldServerTest do
     end
   end
 
+  describe "get_position/2" do
+    test "returns position for joined player", %{server: server} do
+      {:ok, alice} = User.new("alice")
+      {:ok, spawn_position} = WorldServer.join(alice, server)
+
+      assert {:ok, ^spawn_position} = WorldServer.get_position(alice.id, server)
+    end
+
+    test "returns error for unknown player", %{server: server} do
+      fake_id = Ecto.UUID.generate()
+
+      assert {:error, :not_found} = WorldServer.get_position(fake_id, server)
+    end
+  end
+
   describe "pubsub broadcasts" do
     test "broadcasts user_joined on successful join", %{server: server} do
       Phoenix.PubSub.subscribe(Gameserver.PubSub, "world:presence")
