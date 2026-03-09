@@ -5,6 +5,7 @@ defmodule GameserverWeb.WorldLive do
 
   use GameserverWeb, :live_view
 
+  alias Gameserver.Map, as: GameMap
   alias Gameserver.WorldServer
 
   @impl Phoenix.LiveView
@@ -18,7 +19,10 @@ defmodule GameserverWeb.WorldLive do
         end
 
         users = WorldServer.who()
-        {:ok, assign(socket, user_id: user_id, username: username, users: users)}
+        map_rows = GameMap.sample_dungeon() |> GameMap.to_ascii()
+
+        {:ok,
+         assign(socket, user_id: user_id, username: username, users: users, map_rows: map_rows)}
 
       :error ->
         {:ok, push_navigate(socket, to: ~p"/game")}

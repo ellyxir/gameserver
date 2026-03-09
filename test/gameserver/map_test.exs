@@ -142,4 +142,30 @@ defmodule Gameserver.MapTest do
       assert floor_count > 30
     end
   end
+
+  describe "to_ascii/1" do
+    test "converts map to list of row strings" do
+      map = GameMap.new(3, 2)
+      rows = GameMap.to_ascii(map)
+
+      assert rows == ["###", "###"]
+    end
+
+    test "renders floors as dots" do
+      map = GameMap.new(3, 1, default: :floor)
+      assert GameMap.to_ascii(map) == ["..."]
+    end
+
+    test "renders doors as plus signs" do
+      map = GameMap.new(3, 1) |> GameMap.set_tile(1, 0, :door)
+      assert GameMap.to_ascii(map) == ["#+#"]
+    end
+  end
+
+  describe "String.Chars protocol" do
+    test "to_string/1 returns ascii rows joined by newlines" do
+      map = GameMap.new(3, 2)
+      assert to_string(map) == "###\n###"
+    end
+  end
 end

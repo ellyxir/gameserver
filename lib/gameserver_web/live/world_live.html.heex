@@ -1,9 +1,17 @@
-<h1>Online Users</h1>
+<div class="flex gap-8">
+  <div class="font-mono text-sm leading-none bg-gray-900 text-gray-300 p-4 rounded">
+    <%= for row <- @map_rows do %>
+      <div>{row}</div>
+    <% end %>
+  </div>
 
-<p>Welcome, {@username}!</p>
-
-<ul>
-  <%= for {_id, username} <- @users do %>
-    <li>{username}</li>
-  <% end %>
-</ul>
+  <div>
+    <h2 class="text-lg font-bold mb-2">Online Users</h2>
+    <p class="mb-4">Welcome, {@username}!</p>
+    <ul class="list-disc list-inside">
+      <%= for {_id, username} <- @users do %>
+        <li>{username}</li>
+      <% end %>
+    </ul>
+  </div>
+</div>
