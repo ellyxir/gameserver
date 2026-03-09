@@ -142,4 +142,18 @@ defmodule Gameserver.MapTest do
       assert floor_count > 30
     end
   end
+
+  describe "to_ascii/1" do
+    test "converts map to list of row strings" do
+      map = GameMap.new(3, 2)
+      rows = GameMap.to_ascii(map)
+
+      assert rows == ["###", "###"]
+    end
+
+    test "renders floors as dots" do
+      map = GameMap.new(3, 1, default: :floor)
+      assert GameMap.to_ascii(map) == ["..."]
+    end
+  end
 end

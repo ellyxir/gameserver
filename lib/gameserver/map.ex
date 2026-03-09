@@ -127,4 +127,23 @@ defmodule Gameserver.Map do
     |> fill_rect(3, 10, 3, 1, :floor)
     |> fill_rect(10, 10, 2, 1, :floor)
   end
+
+  @doc """
+  Converts the map to a list of ASCII strings, one per row.
+
+  Walls render as `#`, floors as `.`.
+  """
+  @spec to_ascii(t()) :: [String.t()]
+  def to_ascii(%__MODULE__{width: width, height: height} = map) do
+    for y <- 0..(height - 1) do
+      for x <- 0..(width - 1), into: "" do
+        tile_to_char(get_tile!(map, x, y))
+      end
+    end
+  end
+
+  @spec tile_to_char(tile()) :: String.t()
+  defp tile_to_char(:wall), do: "#"
+  defp tile_to_char(:floor), do: "."
+  defp tile_to_char(:door), do: "+"
 end
