@@ -11,8 +11,8 @@ defmodule Gameserver.WorldServer do
 
   defstruct players: %{}, map: nil
 
-  @typedoc "Error reasons for join/leave operations"
-  @type error_reason() :: :already_joined | :not_found | :username_not_available | :no_spawn_point
+  @typedoc "Error reasons for join operations"
+  @type join_error() :: :already_joined | :username_not_available | :no_spawn_point
 
   @presence_topic "world:presence"
 
@@ -35,7 +35,7 @@ defmodule Gameserver.WorldServer do
   `{:error, :already_joined}` if the user ID is already in the world,
   or `{:error, :username_not_available}` if another user has the same username.
   """
-  @spec join(User.t(), GenServer.server()) :: {:ok, GameMap.coord()} | {:error, error_reason()}
+  @spec join(User.t(), GenServer.server()) :: {:ok, GameMap.coord()} | {:error, join_error()}
   def join(%User{} = user, server \\ __MODULE__) do
     GenServer.call(server, {:join, user})
   end
@@ -43,7 +43,7 @@ defmodule Gameserver.WorldServer do
   @doc """
   Removes a user from the world by user_id.
   """
-  @spec leave(Ecto.UUID.t(), GenServer.server()) :: :ok | {:error, error_reason()}
+  @spec leave(Ecto.UUID.t(), GenServer.server()) :: :ok | {:error, :not_found}
   def leave(user_id, server \\ __MODULE__) when is_binary(user_id) do
     GenServer.call(server, {:leave, user_id})
   end
