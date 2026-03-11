@@ -9,6 +9,8 @@ defmodule Gameserver.User do
 
   @types %{username: :string}
 
+  @type username() :: String.t()
+
   @typedoc """
   User type
   id is a UUID that we use to communicate with other game genservers
@@ -16,7 +18,7 @@ defmodule Gameserver.User do
   """
   @type t() :: %__MODULE__{
           id: Ecto.UUID.t(),
-          username: String.t()
+          username: username()
         }
 
   @type user_error() :: :too_long | :too_short | :required | :invalid_format
@@ -24,7 +26,7 @@ defmodule Gameserver.User do
   @doc """
   create a new user
   """
-  @spec new(String.t()) :: {:ok, t()} | {:error, user_error()}
+  @spec new(username()) :: {:ok, t()} | {:error, user_error()}
   def new(username) when is_binary(username) do
     changeset = changeset(%{username: username})
 
@@ -41,7 +43,7 @@ defmodule Gameserver.User do
   validates the username
   returns a changeset that LiveView can use
   """
-  @spec validate_username(String.t()) :: Ecto.Changeset.t()
+  @spec validate_username(username()) :: Ecto.Changeset.t()
   def validate_username(username) do
     %{username: username}
     |> changeset()

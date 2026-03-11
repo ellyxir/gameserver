@@ -55,12 +55,14 @@ defmodule Gameserver.WorldServer do
   - `who(user_id)` - returns matching user or empty list
   - `who([user_ids])` - returns matching users
   """
-  @spec who(GenServer.server()) :: [{Ecto.UUID.t(), String.t()}]
+  @spec who(GenServer.server()) :: [{Ecto.UUID.t(), User.username()}]
   def who(server \\ __MODULE__) do
     GenServer.call(server, :who)
   end
 
-  @spec who(Ecto.UUID.t() | [Ecto.UUID.t()], GenServer.server()) :: [{Ecto.UUID.t(), String.t()}]
+  @spec who(Ecto.UUID.t() | [Ecto.UUID.t()], GenServer.server()) :: [
+          {Ecto.UUID.t(), User.username()}
+        ]
   def who(id_or_ids, server) do
     GenServer.call(server, {:who, id_or_ids})
   end
@@ -68,7 +70,7 @@ defmodule Gameserver.WorldServer do
   @doc """
   Returns all players with their positions as `{user_id, username, position}` tuples.
   """
-  @spec players(GenServer.server()) :: [{Ecto.UUID.t(), String.t(), GameMap.coord()}]
+  @spec players(GenServer.server()) :: [{Ecto.UUID.t(), User.username(), GameMap.coord()}]
   def players(server \\ __MODULE__) do
     GenServer.call(server, :players)
   end
@@ -192,12 +194,13 @@ defmodule Gameserver.WorldServer do
 
   # Private helpers
 
-  @spec player_to_tuple(Player.t()) :: {Ecto.UUID.t(), String.t()}
+  @spec player_to_tuple(Player.t()) :: {Ecto.UUID.t(), User.username()}
   defp player_to_tuple(%Player{user: %User{id: id, username: username}}) do
     {id, username}
   end
 
-  @spec player_to_tuple_with_position(Player.t()) :: {Ecto.UUID.t(), String.t(), GameMap.coord()}
+  @spec player_to_tuple_with_position(Player.t()) ::
+          {Ecto.UUID.t(), User.username(), GameMap.coord()}
   defp player_to_tuple_with_position(%Player{
          user: %User{id: id, username: username},
          position: position
@@ -205,7 +208,7 @@ defmodule Gameserver.WorldServer do
     {id, username, position}
   end
 
-  @spec username_taken?(%{Ecto.UUID.t() => Player.t()}, String.t()) :: boolean()
+  @spec username_taken?(%{Ecto.UUID.t() => Player.t()}, User.username()) :: boolean()
   defp username_taken?(players, username) do
     Enum.any?(players, fn {_id, %Player{user: user}} -> user.username == username end)
   end
