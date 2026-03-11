@@ -14,7 +14,7 @@ defmodule Gameserver.MapTest do
       map = GameMap.new(3, 3)
 
       for x <- 0..2, y <- 0..2 do
-        assert GameMap.get_tile!(map, x, y) == :wall
+        assert GameMap.get_tile!(map, {x, y}) == :wall
       end
     end
 
@@ -22,86 +22,106 @@ defmodule Gameserver.MapTest do
       map = GameMap.new(3, 3, default: :floor)
 
       for x <- 0..2, y <- 0..2 do
-        assert GameMap.get_tile!(map, x, y) == :floor
+        assert GameMap.get_tile!(map, {x, y}) == :floor
       end
     end
   end
 
-  describe "get_tile/3" do
+  describe "get_tile/2" do
     test "returns {:ok, tile} at coordinates" do
-      map = GameMap.new(5, 5) |> GameMap.set_tile(2, 3, :floor)
-      assert GameMap.get_tile(map, 2, 3) == {:ok, :floor}
+      map = GameMap.new(5, 5) |> GameMap.set_tile({2, 3}, :floor)
+      assert GameMap.get_tile(map, {2, 3}) == {:ok, :floor}
     end
 
     test "returns {:error, :out_of_bounds} for out of bounds coordinates" do
       map = GameMap.new(5, 5)
-      assert GameMap.get_tile(map, -1, 0) == {:error, :out_of_bounds}
-      assert GameMap.get_tile(map, 5, 0) == {:error, :out_of_bounds}
-      assert GameMap.get_tile(map, 0, -1) == {:error, :out_of_bounds}
-      assert GameMap.get_tile(map, 0, 5) == {:error, :out_of_bounds}
+      assert GameMap.get_tile(map, {-1, 0}) == {:error, :out_of_bounds}
+      assert GameMap.get_tile(map, {5, 0}) == {:error, :out_of_bounds}
+      assert GameMap.get_tile(map, {0, -1}) == {:error, :out_of_bounds}
+      assert GameMap.get_tile(map, {0, 5}) == {:error, :out_of_bounds}
     end
   end
 
-  describe "get_tile!/3" do
+  describe "get_tile!/2" do
     test "returns tile at coordinates" do
-      map = GameMap.new(5, 5) |> GameMap.set_tile(2, 3, :floor)
-      assert GameMap.get_tile!(map, 2, 3) == :floor
+      map = GameMap.new(5, 5) |> GameMap.set_tile({2, 3}, :floor)
+      assert GameMap.get_tile!(map, {2, 3}) == :floor
     end
 
     test "raises for out of bounds coordinates" do
       map = GameMap.new(5, 5)
 
       assert_raise ArgumentError, "coordinates (-1, 0) out of bounds", fn ->
-        GameMap.get_tile!(map, -1, 0)
+        GameMap.get_tile!(map, {-1, 0})
       end
     end
   end
 
-  describe "set_tile/4" do
+  describe "set_tile/3" do
     test "sets tile at coordinates" do
-      map = GameMap.new(5, 5) |> GameMap.set_tile(1, 2, :floor)
-      assert GameMap.get_tile!(map, 1, 2) == :floor
+      map = GameMap.new(5, 5) |> GameMap.set_tile({1, 2}, :floor)
+      assert GameMap.get_tile!(map, {1, 2}) == :floor
     end
 
     test "returns unchanged map for out of bounds coordinates" do
       map = GameMap.new(5, 5)
-      result = GameMap.set_tile(map, -1, 0, :floor)
+      result = GameMap.set_tile(map, {-1, 0}, :floor)
       assert result == map
     end
   end
 
-  describe "in_bounds?/3" do
+  describe "in_bounds?/2" do
     test "returns true for valid coordinates" do
       map = GameMap.new(10, 10)
-      assert GameMap.in_bounds?(map, 0, 0)
-      assert GameMap.in_bounds?(map, 9, 9)
-      assert GameMap.in_bounds?(map, 5, 5)
+      assert GameMap.in_bounds?(map, {0, 0})
+      assert GameMap.in_bounds?(map, {9, 9})
+      assert GameMap.in_bounds?(map, {5, 5})
     end
 
     test "returns false for negative coordinates" do
       map = GameMap.new(10, 10)
-      refute GameMap.in_bounds?(map, -1, 0)
-      refute GameMap.in_bounds?(map, 0, -1)
+      refute GameMap.in_bounds?(map, {-1, 0})
+      refute GameMap.in_bounds?(map, {0, -1})
     end
 
     test "returns false for coordinates at or beyond dimensions" do
       map = GameMap.new(10, 10)
-      refute GameMap.in_bounds?(map, 10, 0)
-      refute GameMap.in_bounds?(map, 0, 10)
+      refute GameMap.in_bounds?(map, {10, 0})
+      refute GameMap.in_bounds?(map, {0, 10})
     end
   end
 
-  describe "fill_rect/6" do
+  describe "fill_rect/5" do
     test "fills rectangular area with tile type" do
-      map = GameMap.new(10, 10) |> GameMap.fill_rect(2, 2, 4, 3, :floor)
+      map = GameMap.new(10, 10) |> GameMap.fill_rect({2, 2}, 4, 3, :floor)
 
       # Inside the rect
-      assert GameMap.get_tile!(map, 2, 2) == :floor
-      assert GameMap.get_tile!(map, 5, 4) == :floor
+      assert GameMap.get_tile!(map, {2, 2}) == :floor
+      assert GameMap.get_tile!(map, {5, 4}) == :floor
 
       # Outside the rect
-      assert GameMap.get_tile!(map, 1, 2) == :wall
-      assert GameMap.get_tile!(map, 6, 2) == :wall
+      assert GameMap.get_tile!(map, {1, 2}) == :wall
+      assert GameMap.get_tile!(map, {6, 2}) == :wall
+    end
+  end
+
+  describe "set_tile_in_room!/5" do
+    test "places tile on a floor tile within the room" do
+      map = GameMap.new(10, 10) |> GameMap.fill_rect({2, 2}, 3, 3, :floor)
+      result = GameMap.set_tile_in_room!(map, {2, 2}, 3, 3, :upstairs)
+
+      floor_coords =
+        for x <- 2..4, y <- 2..4, GameMap.get_tile!(result, {x, y}) == :upstairs, do: {x, y}
+
+      assert length(floor_coords) == 1
+    end
+
+    test "raises when no floor tiles exist in the room" do
+      map = GameMap.new(10, 10)
+
+      assert_raise ArgumentError, fn ->
+        GameMap.set_tile_in_room!(map, {2, 2}, 3, 3, :upstairs)
+      end
     end
   end
 
@@ -122,7 +142,7 @@ defmodule Gameserver.MapTest do
 
       tiles =
         for x <- 0..(map.width - 1), y <- 0..(map.height - 1) do
-          GameMap.get_tile!(map, x, y)
+          GameMap.get_tile!(map, {x, y})
         end
 
       assert :wall in tiles
@@ -135,7 +155,7 @@ defmodule Gameserver.MapTest do
       floor_count =
         for x <- 0..(map.width - 1), y <- 0..(map.height - 1), reduce: 0 do
           acc ->
-            if GameMap.get_tile!(map, x, y) == :floor, do: acc + 1, else: acc
+            if GameMap.get_tile!(map, {x, y}) == :floor, do: acc + 1, else: acc
         end
 
       # Should have a reasonable number of floor tiles for 3 rooms + corridors
@@ -157,7 +177,7 @@ defmodule Gameserver.MapTest do
     end
 
     test "renders doors as plus signs" do
-      map = GameMap.new(3, 1) |> GameMap.set_tile(1, 0, :door)
+      map = GameMap.new(3, 1) |> GameMap.set_tile({1, 0}, :door)
       assert GameMap.to_ascii(map) == ["#+#"]
     end
   end
