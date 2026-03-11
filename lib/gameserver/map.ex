@@ -166,6 +166,9 @@ defmodule Gameserver.Map do
     # Connect vertical corridors to room 3 (horizontal at y=10)
     |> fill_rect({3, 10}, 3, 1, :floor)
     |> fill_rect({10, 10}, 2, 1, :floor)
+    # Place stairs after all geometry is carved
+    |> set_tile_in_room!({1, 1}, 4, 4, :upstairs)
+    |> set_tile_in_room!({5, 10}, 5, 4, :downstairs)
   end
 
   @doc """
