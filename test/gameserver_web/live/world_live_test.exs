@@ -44,6 +44,26 @@ defmodule GameserverWeb.WorldLiveTest do
     end
   end
 
+  describe "player on map" do
+    test "renders player as @ on the map", %{conn: conn} do
+      {:ok, user} = User.new("mapplayer")
+      {:ok, _position} = WorldServer.join(user)
+
+      {:ok, _view, html} = live(conn, ~p"/world?user_id=#{user.id}")
+
+      assert html =~ "@"
+    end
+
+    test "shows player position coordinates", %{conn: conn} do
+      {:ok, user} = User.new("posplayer")
+      {:ok, {x, y}} = WorldServer.join(user)
+
+      {:ok, _view, html} = live(conn, ~p"/world?user_id=#{user.id}")
+
+      assert html =~ "Position: {#{x}, #{y}}"
+    end
+  end
+
   describe "disconnect" do
     test "calls leave on WorldServer when LiveView terminates", %{conn: conn} do
       {:ok, user} = User.new("disconnectuser")

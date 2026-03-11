@@ -19,10 +19,17 @@ defmodule GameserverWeb.WorldLive do
         end
 
         users = WorldServer.who()
-        map_rows = GameMap.sample_dungeon() |> GameMap.to_ascii()
+        map_cells = GameMap.sample_dungeon() |> GameMap.to_cells()
+        {:ok, player_position} = WorldServer.get_position(user_id)
 
         {:ok,
-         assign(socket, user_id: user_id, username: username, users: users, map_rows: map_rows)}
+         assign(socket,
+           user_id: user_id,
+           username: username,
+           users: users,
+           map_cells: map_cells,
+           player_position: player_position
+         )}
 
       :error ->
         {:ok, push_navigate(socket, to: ~p"/game")}
