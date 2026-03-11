@@ -188,4 +188,20 @@ defmodule Gameserver.MapTest do
       assert to_string(map) == "###\n###"
     end
   end
+
+  describe "get_spawn_point/1" do
+    test "returns a floor tile coordinate" do
+      map = GameMap.new(5, 5) |> GameMap.set_tile({2, 3}, :upstairs)
+
+      {:ok, {x, y}} = GameMap.get_spawn_point(map)
+
+      assert GameMap.get_tile!(map, {x, y}) == :upstairs
+    end
+
+    test "returns error when map has no floor tiles" do
+      map = GameMap.new(5, 5)
+
+      assert {:error, :no_spawn_point} = GameMap.get_spawn_point(map)
+    end
+  end
 end

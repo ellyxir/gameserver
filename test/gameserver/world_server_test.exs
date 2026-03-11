@@ -16,16 +16,17 @@ defmodule Gameserver.WorldServerTest do
   end
 
   describe "join/2" do
-    test "adds user to the world", %{server: server} do
+    test "adds user to the world and returns spawn position", %{server: server} do
       {:ok, user} = User.new("alice")
 
-      assert :ok = WorldServer.join(user, server)
+      assert {:ok, {x, y}} = WorldServer.join(user, server)
+      assert is_integer(x) and is_integer(y)
     end
 
     test "returns error when user already joined", %{server: server} do
       {:ok, user} = User.new("alice")
 
-      :ok = WorldServer.join(user, server)
+      {:ok, _position} = WorldServer.join(user, server)
       assert {:error, :already_joined} = WorldServer.join(user, server)
     end
 
@@ -33,7 +34,7 @@ defmodule Gameserver.WorldServerTest do
       {:ok, alice1} = User.new("alice")
       {:ok, alice2} = User.new("alice")
 
-      :ok = WorldServer.join(alice1, server)
+      {:ok, _position} = WorldServer.join(alice1, server)
       assert {:error, :username_not_available} = WorldServer.join(alice2, server)
     end
 
@@ -41,24 +42,24 @@ defmodule Gameserver.WorldServerTest do
       {:ok, alice1} = User.new("alice")
       {:ok, alice2} = User.new("alice")
 
-      :ok = WorldServer.join(alice1, server)
+      {:ok, _position} = WorldServer.join(alice1, server)
       :ok = WorldServer.leave(alice1.id, server)
-      assert :ok = WorldServer.join(alice2, server)
+      assert {:ok, _position} = WorldServer.join(alice2, server)
     end
 
     test "allows rejoin after leaving", %{server: server} do
       {:ok, user} = User.new("alice")
 
-      :ok = WorldServer.join(user, server)
+      {:ok, _position} = WorldServer.join(user, server)
       :ok = WorldServer.leave(user.id, server)
-      assert :ok = WorldServer.join(user, server)
+      assert {:ok, _position} = WorldServer.join(user, server)
     end
   end
 
   describe "leave/2" do
     test "removes user from the world", %{server: server} do
       {:ok, user} = User.new("alice")
-      :ok = WorldServer.join(user, server)
+      {:ok, _position} = WorldServer.join(user, server)
 
       assert :ok = WorldServer.leave(user.id, server)
     end
@@ -78,8 +79,8 @@ defmodule Gameserver.WorldServerTest do
     test "returns all users when called with no filter", %{server: server} do
       {:ok, alice} = User.new("alice")
       {:ok, bob} = User.new("bob")
-      :ok = WorldServer.join(alice, server)
-      :ok = WorldServer.join(bob, server)
+      {:ok, _position} = WorldServer.join(alice, server)
+      {:ok, _position} = WorldServer.join(bob, server)
 
       result = WorldServer.who(server)
 
@@ -91,8 +92,8 @@ defmodule Gameserver.WorldServerTest do
     test "returns single user when given user_id", %{server: server} do
       {:ok, alice} = User.new("alice")
       {:ok, bob} = User.new("bob")
-      :ok = WorldServer.join(alice, server)
-      :ok = WorldServer.join(bob, server)
+      {:ok, _position} = WorldServer.join(alice, server)
+      {:ok, _position} = WorldServer.join(bob, server)
 
       assert [{alice.id, "alice"}] == WorldServer.who(alice.id, server)
     end
@@ -105,9 +106,9 @@ defmodule Gameserver.WorldServerTest do
       {:ok, alice} = User.new("alice")
       {:ok, bob} = User.new("bob")
       {:ok, charlie} = User.new("charlie")
-      :ok = WorldServer.join(alice, server)
-      :ok = WorldServer.join(bob, server)
-      :ok = WorldServer.join(charlie, server)
+      {:ok, _position} = WorldServer.join(alice, server)
+      {:ok, _position} = WorldServer.join(bob, server)
+      {:ok, _position} = WorldServer.join(charlie, server)
 
       result = WorldServer.who([alice.id, charlie.id], server)
 
@@ -119,11 +120,45 @@ defmodule Gameserver.WorldServerTest do
 
     test "ignores unknown ids in list", %{server: server} do
       {:ok, alice} = User.new("alice")
-      :ok = WorldServer.join(alice, server)
+      {:ok, _position} = WorldServer.join(alice, server)
 
       result = WorldServer.who([alice.id, "unknown-id"], server)
 
       assert [{alice.id, "alice"}] == result
+    end
+  end
+
+  describe "get_position/2" do
+    test "returns position for joined player", %{server: server} do
+      {:ok, alice} = User.new("alice")
+      {:ok, spawn_position} = WorldServer.join(alice, server)
+
+      assert {:ok, ^spawn_position} = WorldServer.get_position(alice.id, server)
+    end
+
+    test "returns error for unknown player", %{server: server} do
+      fake_id = Ecto.UUID.generate()
+
+      assert {:error, :not_found} = WorldServer.get_position(fake_id, server)
+    end
+  end
+
+  describe "players/1" do
+    test "returns empty list when no players", %{server: server} do
+      assert [] = WorldServer.players(server)
+    end
+
+    test "returns all players with positions", %{server: server} do
+      {:ok, alice} = User.new("alice")
+      {:ok, bob} = User.new("bob")
+      {:ok, alice_pos} = WorldServer.join(alice, server)
+      {:ok, bob_pos} = WorldServer.join(bob, server)
+
+      result = WorldServer.players(server)
+
+      assert length(result) == 2
+      assert {alice.id, "alice", alice_pos} in result
+      assert {bob.id, "bob", bob_pos} in result
     end
   end
 
@@ -132,7 +167,7 @@ defmodule Gameserver.WorldServerTest do
       Phoenix.PubSub.subscribe(Gameserver.PubSub, "world:presence")
       {:ok, alice} = User.new("alice")
 
-      :ok = WorldServer.join(alice, server)
+      {:ok, _position} = WorldServer.join(alice, server)
 
       assert_receive {:user_joined, ^alice}
     end
@@ -140,7 +175,7 @@ defmodule Gameserver.WorldServerTest do
     test "does not broadcast on failed join", %{server: server} do
       Phoenix.PubSub.subscribe(Gameserver.PubSub, "world:presence")
       {:ok, alice} = User.new("alice")
-      :ok = WorldServer.join(alice, server)
+      {:ok, _position} = WorldServer.join(alice, server)
 
       # Clear the first message
       assert_receive {:user_joined, ^alice}
@@ -156,7 +191,7 @@ defmodule Gameserver.WorldServerTest do
       {:ok, alice1} = User.new("alice")
       {:ok, alice2} = User.new("alice")
 
-      :ok = WorldServer.join(alice1, server)
+      {:ok, _position} = WorldServer.join(alice1, server)
       assert_receive {:user_joined, ^alice1}
 
       {:error, :username_not_available} = WorldServer.join(alice2, server)
@@ -166,7 +201,7 @@ defmodule Gameserver.WorldServerTest do
     test "broadcasts user_left on successful leave", %{server: server} do
       Phoenix.PubSub.subscribe(Gameserver.PubSub, "world:presence")
       {:ok, alice} = User.new("alice")
-      :ok = WorldServer.join(alice, server)
+      {:ok, _position} = WorldServer.join(alice, server)
       assert_receive {:user_joined, ^alice}
 
       :ok = WorldServer.leave(alice.id, server)

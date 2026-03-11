@@ -63,7 +63,7 @@ defmodule GameserverWeb.GameLiveTest do
     test "shows error when username is already taken", %{conn: conn} do
       unique_name = "taken#{System.unique_integer([:positive])}"
       {:ok, existing_user} = Gameserver.User.new(unique_name)
-      :ok = Gameserver.WorldServer.join(existing_user)
+      {:ok, _position} = Gameserver.WorldServer.join(existing_user)
 
       {:ok, view, _html} = live(conn, ~p"/game")
 

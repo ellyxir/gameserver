@@ -5,13 +5,14 @@ defmodule Gameserver.WorldServer do
 
   use GenServer
 
+  alias Gameserver.Map, as: GameMap
+  alias Gameserver.Player
   alias Gameserver.User
 
-  # State: %__MODULE__{users: %{Ecto.UUID.t() => User.t()}}
-  defstruct users: %{}
+  defstruct players: %{}, map: nil
 
   @typedoc "Error reasons for join/leave operations"
-  @type error_reason() :: :already_joined | :not_found | :username_not_available
+  @type error_reason() :: :already_joined | :not_found | :username_not_available | :no_spawn_point
 
   @presence_topic "world:presence"
 
@@ -28,12 +29,13 @@ defmodule Gameserver.WorldServer do
   end
 
   @doc """
-  Adds a user to the world.
+  Adds a user to the world and assigns them a spawn position.
 
-  Returns `{:error, :already_joined}` if the user ID is already in the world,
+  Returns `{:ok, position}` on success with the spawn coordinates,
+  `{:error, :already_joined}` if the user ID is already in the world,
   or `{:error, :username_not_available}` if another user has the same username.
   """
-  @spec join(User.t(), GenServer.server()) :: :ok | {:error, error_reason()}
+  @spec join(User.t(), GenServer.server()) :: {:ok, GameMap.coord()} | {:error, error_reason()}
   def join(%User{} = user, server \\ __MODULE__) do
     GenServer.call(server, {:join, user})
   end
@@ -64,6 +66,23 @@ defmodule Gameserver.WorldServer do
   end
 
   @doc """
+  Returns all players with their positions as `{user_id, username, position}` tuples.
+  """
+  @spec players(GenServer.server()) :: [{Ecto.UUID.t(), String.t(), GameMap.coord()}]
+  def players(server \\ __MODULE__) do
+    GenServer.call(server, :players)
+  end
+
+  @doc """
+  Returns the position of a player by user_id.
+  """
+  @spec get_position(Ecto.UUID.t(), GenServer.server()) ::
+          {:ok, GameMap.coord()} | {:error, :not_found}
+  def get_position(user_id, server \\ __MODULE__) when is_binary(user_id) do
+    GenServer.call(server, {:get_position, user_id})
+  end
+
+  @doc """
   Returns the PubSub topic for presence updates.
 
   Subscribe to receive `{:user_joined, user}` and `{:user_left, user}` messages.
@@ -75,57 +94,74 @@ defmodule Gameserver.WorldServer do
 
   @impl GenServer
   def init(_opts) do
-    {:ok, %__MODULE__{}}
+    {:ok, %__MODULE__{map: GameMap.sample_dungeon()}}
   end
 
   @impl GenServer
   def handle_call(
         {:join, %User{id: id, username: username} = user},
         _from,
-        %__MODULE__{users: users} = state
+        %__MODULE__{players: players, map: map} = state
       ) do
     cond do
-      Map.has_key?(users, id) ->
+      Map.has_key?(players, id) ->
         {:reply, {:error, :already_joined}, state}
 
-      username_taken?(users, username) ->
+      username_taken?(players, username) ->
         {:reply, {:error, :username_not_available}, state}
 
       true ->
-        broadcast_presence({:user_joined, user})
-        {:reply, :ok, %{state | users: Map.put(users, id, user)}}
+        case GameMap.get_spawn_point(map) do
+          {:ok, position} ->
+            player = Player.new(user, position)
+            broadcast_presence({:user_joined, user})
+            {:reply, {:ok, position}, %{state | players: Map.put(players, id, player)}}
+
+          {:error, :no_spawn_point} ->
+            {:reply, {:error, :no_spawn_point}, state}
+        end
     end
   end
 
   @impl GenServer
-  def handle_call({:leave, user_id}, _from, %__MODULE__{users: users} = state) do
-    case Map.pop(users, user_id) do
-      {nil, _users} ->
+  def handle_call({:leave, user_id}, _from, %__MODULE__{players: players} = state) do
+    case Map.pop(players, user_id) do
+      {nil, _players} ->
         {:reply, {:error, :not_found}, state}
 
-      {user, remaining_users} ->
+      {%Player{user: user}, remaining_players} ->
         broadcast_presence({:user_left, user})
-        {:reply, :ok, %{state | users: remaining_users}}
+        {:reply, :ok, %{state | players: remaining_players}}
     end
   end
 
   @impl GenServer
-  def handle_call(:who, _from, %__MODULE__{users: users} = state) do
+  def handle_call(:who, _from, %__MODULE__{players: players} = state) do
     result =
-      users
+      players
       |> Map.values()
-      |> Enum.map(fn %User{id: id, username: username} -> {id, username} end)
+      |> Enum.map(&player_to_tuple/1)
 
     {:reply, result, state}
   end
 
   @impl GenServer
-  def handle_call({:who, ids}, _from, %__MODULE__{users: users} = state) when is_list(ids) do
+  def handle_call(:players, _from, %__MODULE__{players: players} = state) do
+    result =
+      players
+      |> Map.values()
+      |> Enum.map(&player_to_tuple_with_position/1)
+
+    {:reply, result, state}
+  end
+
+  @impl GenServer
+  def handle_call({:who, ids}, _from, %__MODULE__{players: players} = state) when is_list(ids) do
     result =
       Enum.flat_map(ids, fn id ->
-        case Map.get(users, id) do
+        case Map.get(players, id) do
           nil -> []
-          %User{id: user_id, username: username} -> [{user_id, username}]
+          player -> [player_to_tuple(player)]
         end
       end)
 
@@ -133,11 +169,22 @@ defmodule Gameserver.WorldServer do
   end
 
   @impl GenServer
-  def handle_call({:who, id}, _from, %__MODULE__{users: users} = state) do
+  def handle_call({:who, id}, _from, %__MODULE__{players: players} = state) do
     result =
-      case Map.get(users, id) do
+      case Map.get(players, id) do
         nil -> []
-        %User{id: user_id, username: username} -> [{user_id, username}]
+        player -> [player_to_tuple(player)]
+      end
+
+    {:reply, result, state}
+  end
+
+  @impl GenServer
+  def handle_call({:get_position, user_id}, _from, %__MODULE__{players: players} = state) do
+    result =
+      case Map.get(players, user_id) do
+        nil -> {:error, :not_found}
+        %Player{position: position} -> {:ok, position}
       end
 
     {:reply, result, state}
@@ -145,9 +192,22 @@ defmodule Gameserver.WorldServer do
 
   # Private helpers
 
-  @spec username_taken?(%{Ecto.UUID.t() => User.t()}, String.t()) :: boolean()
-  defp username_taken?(users, username) do
-    Enum.any?(users, fn {_id, user} -> user.username == username end)
+  @spec player_to_tuple(Player.t()) :: {Ecto.UUID.t(), String.t()}
+  defp player_to_tuple(%Player{user: %User{id: id, username: username}}) do
+    {id, username}
+  end
+
+  @spec player_to_tuple_with_position(Player.t()) :: {Ecto.UUID.t(), String.t(), GameMap.coord()}
+  defp player_to_tuple_with_position(%Player{
+         user: %User{id: id, username: username},
+         position: position
+       }) do
+    {id, username, position}
+  end
+
+  @spec username_taken?(%{Ecto.UUID.t() => Player.t()}, String.t()) :: boolean()
+  defp username_taken?(players, username) do
+    Enum.any?(players, fn {_id, %Player{user: user}} -> user.username == username end)
   end
 
   @spec broadcast_presence({:user_joined | :user_left, User.t()}) :: :ok
