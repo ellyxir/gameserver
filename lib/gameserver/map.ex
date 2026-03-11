@@ -172,17 +172,28 @@ defmodule Gameserver.Map do
   end
 
   @doc """
+  Converts the map to a list of character lists, one list per row.
+
+  Each cell is a single-character string. Useful for per-character rendering
+  where individual cells need different styling.
+  """
+  @spec to_cells(t()) :: [[String.t()]]
+  def to_cells(%__MODULE__{width: width, height: height} = map) do
+    for y <- 0..(height - 1) do
+      for x <- 0..(width - 1) do
+        tile_to_char(get_tile!(map, {x, y}))
+      end
+    end
+  end
+
+  @doc """
   Converts the map to a list of ASCII strings, one per row.
 
   Walls render as `#`, floors as `.`, doors as `+`.
   """
   @spec to_ascii(t()) :: [String.t()]
-  def to_ascii(%__MODULE__{width: width, height: height} = map) do
-    for y <- 0..(height - 1) do
-      for x <- 0..(width - 1), into: "" do
-        tile_to_char(get_tile!(map, {x, y}))
-      end
-    end
+  def to_ascii(%__MODULE__{} = map) do
+    map |> to_cells() |> Enum.map(&Enum.join/1)
   end
 
   @doc """

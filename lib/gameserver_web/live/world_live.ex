@@ -1,6 +1,7 @@
 defmodule GameserverWeb.WorldLive do
   @moduledoc """
-  LiveView for the world page showing online users.
+  LiveView for the world page, rendering the dungeon map with
+  the player's position and online users list.
   """
 
   use GameserverWeb, :live_view
@@ -18,11 +19,25 @@ defmodule GameserverWeb.WorldLive do
           Phoenix.PubSub.subscribe(Gameserver.PubSub, WorldServer.presence_topic())
         end
 
-        users = WorldServer.who()
-        map_rows = GameMap.sample_dungeon() |> GameMap.to_ascii()
+        case WorldServer.get_position(user_id) do
+          {:ok, {px, py}} ->
+            users = WorldServer.who()
+            map_cells = GameMap.sample_dungeon() |> GameMap.to_cells()
 
-        {:ok,
-         assign(socket, user_id: user_id, username: username, users: users, map_rows: map_rows)}
+            {:ok,
+             assign(socket,
+               user_id: user_id,
+               username: username,
+               users: users,
+               map_cells: map_cells,
+               player_position: {px, py},
+               player_x: px,
+               player_y: py
+             )}
+
+          {:error, :not_found} ->
+            {:ok, push_navigate(socket, to: ~p"/game")}
+        end
 
       :error ->
         {:ok, push_navigate(socket, to: ~p"/game")}
