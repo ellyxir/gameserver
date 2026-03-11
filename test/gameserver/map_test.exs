@@ -91,9 +91,9 @@ defmodule Gameserver.MapTest do
     end
   end
 
-  describe "fill_rect/3" do
+  describe "fill_rect/5" do
     test "fills rectangular area with tile type" do
-      map = GameMap.new(10, 10) |> GameMap.fill_rect({{2, 2}, 4, 3}, :floor)
+      map = GameMap.new(10, 10) |> GameMap.fill_rect({2, 2}, 4, 3, :floor)
 
       # Inside the rect
       assert GameMap.get_tile!(map, {2, 2}) == :floor
@@ -102,6 +102,26 @@ defmodule Gameserver.MapTest do
       # Outside the rect
       assert GameMap.get_tile!(map, {1, 2}) == :wall
       assert GameMap.get_tile!(map, {6, 2}) == :wall
+    end
+  end
+
+  describe "set_tile_in_room!/5" do
+    test "places tile on a floor tile within the room" do
+      map = GameMap.new(10, 10) |> GameMap.fill_rect({2, 2}, 3, 3, :floor)
+      result = GameMap.set_tile_in_room!(map, {2, 2}, 3, 3, :upstairs)
+
+      floor_coords =
+        for x <- 2..4, y <- 2..4, GameMap.get_tile!(result, {x, y}) == :upstairs, do: {x, y}
+
+      assert length(floor_coords) == 1
+    end
+
+    test "raises when no floor tiles exist in the room" do
+      map = GameMap.new(10, 10)
+
+      assert_raise ArgumentError, fn ->
+        GameMap.set_tile_in_room!(map, {2, 2}, 3, 3, :upstairs)
+      end
     end
   end
 
