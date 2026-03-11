@@ -182,6 +182,20 @@ defmodule Gameserver.MapTest do
     end
   end
 
+  describe "to_cells/1" do
+    test "converts map to list of character lists" do
+      map = GameMap.new(3, 2)
+      cells = GameMap.to_cells(map)
+
+      assert cells == [["#", "#", "#"], ["#", "#", "#"]]
+    end
+
+    test "renders different tile types as individual characters" do
+      map = GameMap.new(3, 1) |> GameMap.set_tile({1, 0}, :floor)
+      assert GameMap.to_cells(map) == [["#", ".", "#"]]
+    end
+  end
+
   describe "String.Chars protocol" do
     test "to_string/1 returns ascii rows joined by newlines" do
       map = GameMap.new(3, 2)
