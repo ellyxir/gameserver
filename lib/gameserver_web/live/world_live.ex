@@ -1,7 +1,8 @@
 defmodule GameserverWeb.WorldLive do
   @moduledoc """
   LiveView for the world page, rendering the dungeon map with
-  the player's position and online users list.
+  the player's position and online users list. Handles keyboard
+  (WASD/arrow) and tile click input for player movement.
   """
 
   use GameserverWeb, :live_view
@@ -46,8 +47,8 @@ defmodule GameserverWeb.WorldLive do
     end
   end
 
-  @typedoc "Cardinal direction for player movement."
-  @type direction() :: :north | :south | :east | :west
+  # Cardinal direction for player movement.
+  @typep direction() :: :north | :south | :east | :west
 
   @key_to_direction %{
     "w" => :north,
@@ -65,6 +66,30 @@ defmodule GameserverWeb.WorldLive do
     case Map.get(@key_to_direction, key) do
       nil -> {:noreply, socket}
       direction -> move_player(socket, direction)
+    end
+  end
+
+  def handle_event("tile-click", %{"x" => x, "y" => y}, socket) do
+    case direction_from(
+           socket.assigns.player_position,
+           {String.to_integer(x), String.to_integer(y)}
+         ) do
+      nil -> {:noreply, socket}
+      direction -> move_player(socket, direction)
+    end
+  end
+
+  @spec direction_from(GameMap.coord(), GameMap.coord()) :: direction() | nil
+  defp direction_from(same, same), do: nil
+
+  defp direction_from({fx, fy}, {tx, ty}) do
+    dx = tx - fx
+    dy = ty - fy
+
+    if abs(dx) >= abs(dy) do
+      if dx > 0, do: :east, else: :west
+    else
+      if dy > 0, do: :south, else: :north
     end
   end
 
