@@ -116,6 +116,14 @@ defmodule Gameserver.WorldServer do
   @spec movement_topic() :: String.t()
   def movement_topic, do: @movement_topic
 
+  @doc """
+  Returns the current map from the world.
+  """
+  @spec get_map(GenServer.server()) :: GameMap.t()
+  def get_map(server \\ __MODULE__) do
+    GenServer.call(server, :get_map)
+  end
+
   @doc "Returns the movement cooldown duration in milliseconds."
   @spec move_cooldown_ms() :: pos_integer()
   def move_cooldown_ms, do: @move_cooldown_ms
@@ -235,6 +243,11 @@ defmodule Gameserver.WorldServer do
     else
       {:error, reason} -> {:reply, {:error, reason}, state}
     end
+  end
+
+  @impl GenServer
+  def handle_call(:get_map, _from, %__MODULE__{map: map} = state) do
+    {:reply, map, state}
   end
 
   # Private helpers

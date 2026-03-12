@@ -162,6 +162,12 @@ defmodule Gameserver.WorldServerTest do
     end
   end
 
+  describe "get_map/1" do
+    test "returns the map", %{server: server} do
+      assert %Gameserver.Map{} = WorldServer.get_map(server)
+    end
+  end
+
   describe "move/3" do
     test "moves player and returns new position", %{server: server} do
       {:ok, user} = User.new("alice")
