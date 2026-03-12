@@ -46,17 +46,32 @@ defmodule GameserverWeb.WorldLive do
     end
   end
 
-  @valid_directions ~w(north south east west)
+  @typedoc "Cardinal direction for player movement."
+  @type direction() :: :north | :south | :east | :west
+
+  @key_to_direction %{
+    "w" => :north,
+    "a" => :west,
+    "s" => :south,
+    "d" => :east,
+    "ArrowUp" => :north,
+    "ArrowLeft" => :west,
+    "ArrowDown" => :south,
+    "ArrowRight" => :east
+  }
 
   @impl Phoenix.LiveView
-  def handle_event("player-move", %{"direction" => direction}, socket)
-      when direction in @valid_directions do
-    Logger.debug("player-move user=#{socket.assigns.user_id} direction=#{direction}")
-    {:noreply, socket}
+  def handle_event("keydown", %{"key" => key}, socket) do
+    case Map.get(@key_to_direction, key) do
+      nil -> {:noreply, socket}
+      direction -> move_player(socket, direction)
+    end
   end
 
-  def handle_event("player-move", params, socket) do
-    Logger.error("invalid player-move user=#{socket.assigns.user_id} params=#{inspect(params)}")
+  @spec move_player(Phoenix.LiveView.Socket.t(), direction()) ::
+          {:noreply, Phoenix.LiveView.Socket.t()}
+  defp move_player(socket, direction) do
+    Logger.debug("player-move user=#{socket.assigns.user_id} direction=#{direction}")
     {:noreply, socket}
   end
 

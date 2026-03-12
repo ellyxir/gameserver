@@ -1,4 +1,4 @@
-<div class="flex gap-8">
+<div class="flex gap-8" phx-window-keydown="keydown">
   <div>
     <div class="font-mono text-sm leading-none bg-gray-900 text-gray-300 p-4 rounded">
       <%= for {row, y} <- Enum.with_index(@map_cells) do %>

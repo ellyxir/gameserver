@@ -125,10 +125,9 @@ defmodule GameserverWeb.WorldLiveTest do
     end
   end
 
-  # TODO(@ellyxir): once we have movement being handled we should no
-  # longer need to test against logs, we can test against things
-  # like the player location. this test is just for initial setup
-  describe "player-move event" do
+  # TODO(@ellyxir): replace log-based assertions with state change
+  # assertions once movement updates player position
+  describe "keyboard input" do
     setup do
       previous_level = Logger.level()
       Logger.configure(level: :debug)
@@ -136,34 +135,51 @@ defmodule GameserverWeb.WorldLiveTest do
     end
 
     @tag capture_log: true
-    test "logs valid direction", %{conn: conn} do
-      {:ok, user} = User.new("mover")
+    test "wasd keys map to cardinal directions", %{conn: conn} do
+      {:ok, user} = User.new("wasduser")
       {:ok, _position} = WorldServer.join(user)
       {:ok, view, _html} = live(conn, ~p"/world?user_id=#{user.id}")
 
-      log =
-        capture_log(fn ->
-          render_click(view, "player-move", %{"direction" => "north"})
-        end)
+      for {key, direction} <- [{"w", "north"}, {"a", "west"}, {"s", "south"}, {"d", "east"}] do
+        log =
+          capture_log(fn ->
+            render_keydown(view, "keydown", %{"key" => key})
+          end)
 
-      assert log =~ "north"
-      assert log =~ user.id
+        assert log =~ direction, "expected #{key} to map to #{direction}"
+      end
     end
 
     @tag capture_log: true
-    test "logs error for invalid direction", %{conn: conn} do
-      {:ok, user} = User.new("badmover")
+    test "arrow keys map to cardinal directions", %{conn: conn} do
+      {:ok, user} = User.new("arrowuser")
       {:ok, _position} = WorldServer.join(user)
       {:ok, view, _html} = live(conn, ~p"/world?user_id=#{user.id}")
 
-      log =
-        capture_log(fn ->
-          render_click(view, "player-move", %{"direction" => "northwest"})
-        end)
+      for {key, direction} <-
+            [
+              {"ArrowUp", "north"},
+              {"ArrowLeft", "west"},
+              {"ArrowDown", "south"},
+              {"ArrowRight", "east"}
+            ] do
+        log =
+          capture_log(fn ->
+            render_keydown(view, "keydown", %{"key" => key})
+          end)
 
-      assert log =~ "invalid player-move"
-      assert log =~ "northwest"
-      assert log =~ user.id
+        assert log =~ direction, "expected #{key} to map to #{direction}"
+      end
+    end
+
+    test "unmapped keys don't crash", %{conn: conn} do
+      {:ok, user} = User.new("otherkey")
+      {:ok, _position} = WorldServer.join(user)
+      {:ok, view, _html} = live(conn, ~p"/world?user_id=#{user.id}")
+
+      render_keydown(view, "keydown", %{"key" => "x"})
+
+      assert render(view) =~ "Online Users"
     end
   end
 end
