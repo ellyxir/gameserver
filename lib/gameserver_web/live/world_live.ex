@@ -8,7 +8,11 @@ defmodule GameserverWeb.WorldLive do
   use GameserverWeb, :live_view
 
   alias Gameserver.Map, as: GameMap
+  alias Gameserver.User
   alias Gameserver.WorldServer
+
+  # All player positions keyed by user_id.
+  @typep player_positions() :: %{Ecto.UUID.t() => {User.username(), GameMap.coord()}}
 
   @impl Phoenix.LiveView
   def mount(params, _session, socket) do
@@ -21,22 +25,25 @@ defmodule GameserverWeb.WorldLive do
           Phoenix.PubSub.subscribe(Gameserver.PubSub, WorldServer.movement_topic())
         end
 
-        case WorldServer.get_position(user_id) do
-          {:ok, {px, py}} ->
-            users = WorldServer.who()
-            map_cells = GameMap.sample_dungeon() |> GameMap.to_cells()
+        all_players = WorldServer.players()
 
-            {:ok,
-             assign(socket,
-               user_id: user_id,
-               username: username,
-               users: users,
-               map_cells: map_cells,
-               player_position: {px, py}
-             )}
+        player_positions =
+          Map.new(all_players, fn {id, uname, pos} -> {id, {uname, pos}} end)
 
-          {:error, :not_found} ->
-            {:ok, push_navigate(socket, to: ~p"/game")}
+        if Map.has_key?(player_positions, user_id) do
+          users = WorldServer.who()
+          map_cells = GameMap.sample_dungeon() |> GameMap.to_cells()
+
+          {:ok,
+           assign(socket,
+             user_id: user_id,
+             username: username,
+             users: users,
+             map_cells: map_cells,
+             player_positions: player_positions
+           )}
+        else
+          {:ok, push_navigate(socket, to: ~p"/game")}
         end
 
       :error ->
@@ -64,7 +71,7 @@ defmodule GameserverWeb.WorldLive do
   end
 
   def handle_event("tile-click", %{"x" => x, "y" => y}, socket) do
-    case direction_from(socket.assigns.player_position, GameMap.parse_coord(x, y)) do
+    case direction_from(my_position(socket), GameMap.parse_coord(x, y)) do
       nil -> {:noreply, socket}
       direction -> move_player(socket, direction)
     end
@@ -99,7 +106,8 @@ defmodule GameserverWeb.WorldLive do
 
   def handle_info({:player_moved, user_id, position}, socket) do
     if user_id == socket.assigns.user_id do
-      {:noreply, assign(socket, player_position: position)}
+      player_positions = put_position(socket.assigns.player_positions, user_id, position)
+      {:noreply, assign(socket, player_positions: player_positions)}
     else
       {:noreply, socket}
     end
@@ -123,6 +131,24 @@ defmodule GameserverWeb.WorldLive do
       _ ->
         :ok
     end
+  end
+
+  @spec my_position(Phoenix.LiveView.Socket.t() | map()) :: GameMap.coord()
+  defp my_position(%Phoenix.LiveView.Socket{assigns: assigns}), do: my_position(assigns)
+
+  defp my_position(%{user_id: user_id, player_positions: player_positions}) do
+    {_username, position} = player_positions[user_id]
+    position
+  end
+
+  @spec put_position(player_positions(), Ecto.UUID.t(), GameMap.coord()) :: player_positions()
+  defp put_position(player_positions, user_id, position) do
+    Map.update!(player_positions, user_id, fn {username, _old} -> {username, position} end)
+  end
+
+  @spec players_at(player_positions(), GameMap.coord()) :: [Ecto.UUID.t()]
+  defp players_at(player_positions, coord) do
+    for {id, {_username, pos}} <- player_positions, pos == coord, do: id
   end
 
   @spec validate_user(String.t() | nil) :: {:ok, String.t()} | :error
