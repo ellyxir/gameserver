@@ -33,7 +33,7 @@ defmodule GameserverWeb.WorldLive do
           Map.new(all_players, fn {id, uname, pos} -> {id, {uname, pos}} end)
 
         if Map.has_key?(player_positions, user_id) do
-          map_cells = GameMap.sample_dungeon() |> GameMap.to_cells()
+          map_cells = WorldServer.get_map() |> GameMap.to_cells()
 
           {:ok,
            assign(socket,
