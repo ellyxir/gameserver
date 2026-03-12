@@ -1,10 +1,13 @@
 defmodule GameserverWeb.WorldLive do
   @moduledoc """
   LiveView for the world page, rendering the dungeon map with
-  the player's position and online users list.
+  the player's position and online users list. Handles keyboard
+  (WASD/arrow) and tile click input for player movement.
   """
 
   use GameserverWeb, :live_view
+
+  require Logger
 
   alias Gameserver.Map, as: GameMap
   alias Gameserver.WorldServer
@@ -42,6 +45,53 @@ defmodule GameserverWeb.WorldLive do
       :error ->
         {:ok, push_navigate(socket, to: ~p"/game")}
     end
+  end
+
+  @key_to_direction %{
+    "w" => :north,
+    "a" => :west,
+    "s" => :south,
+    "d" => :east,
+    "ArrowUp" => :north,
+    "ArrowLeft" => :west,
+    "ArrowDown" => :south,
+    "ArrowRight" => :east
+  }
+
+  @impl Phoenix.LiveView
+  def handle_event("keydown", %{"key" => key}, socket) do
+    case Map.get(@key_to_direction, key) do
+      nil -> {:noreply, socket}
+      direction -> move_player(socket, direction)
+    end
+  end
+
+  def handle_event("tile-click", %{"x" => x, "y" => y}, socket) do
+    case direction_from(socket.assigns.player_position, GameMap.parse_coord(x, y)) do
+      nil -> {:noreply, socket}
+      direction -> move_player(socket, direction)
+    end
+  end
+
+  @spec direction_from(GameMap.coord(), GameMap.coord()) :: GameMap.direction() | nil
+  defp direction_from(same, same), do: nil
+
+  defp direction_from({fx, fy}, {tx, ty}) do
+    dx = tx - fx
+    dy = ty - fy
+
+    if abs(dx) >= abs(dy) do
+      if dx > 0, do: :east, else: :west
+    else
+      if dy > 0, do: :south, else: :north
+    end
+  end
+
+  @spec move_player(Phoenix.LiveView.Socket.t(), GameMap.direction()) ::
+          {:noreply, Phoenix.LiveView.Socket.t()}
+  defp move_player(socket, direction) do
+    Logger.debug("player-move user=#{socket.assigns.user_id} direction=#{direction}")
+    {:noreply, socket}
   end
 
   @impl Phoenix.LiveView

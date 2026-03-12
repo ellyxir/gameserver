@@ -11,6 +11,9 @@ defmodule Gameserver.Map do
   @typedoc "An {x, y} coordinate pair"
   @type coord() :: {non_neg_integer(), non_neg_integer()}
 
+  @typedoc "Cardinal direction for movement."
+  @type direction() :: :north | :south | :east | :west
+
   @type width() :: pos_integer()
   @type height() :: pos_integer()
 
@@ -208,6 +211,10 @@ defmodule Gameserver.Map do
       {coord, :upstairs} -> {:ok, coord}
     end
   end
+
+  @doc "Parses a pair of strings into a coord tuple."
+  @spec parse_coord(String.t(), String.t()) :: coord()
+  def parse_coord(x, y), do: {String.to_integer(x), String.to_integer(y)}
 
   @spec tile_to_char(tile()) :: String.t()
   for {tile, c} <- @tile_chars do

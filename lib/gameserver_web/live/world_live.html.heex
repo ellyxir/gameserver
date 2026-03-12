@@ -1,13 +1,22 @@
-<div class="flex gap-8">
+<div class="flex gap-8" phx-window-keydown="keydown">
   <div>
     <div class="font-mono text-sm leading-none bg-gray-900 text-gray-300 p-4 rounded">
       <%= for {row, y} <- Enum.with_index(@map_cells) do %>
         <div>
           <%= for {char, x} <- Enum.with_index(row) do %>
             <%= if {x, y} == @player_position do %>
-              <span class="text-yellow-300 font-bold">@</span>
+              <span
+                class="text-yellow-300 font-bold cursor-pointer"
+                phx-click="tile-click"
+                phx-value-x={x}
+                phx-value-y={y}
+              >
+                @
+              </span>
             <% else %>
-              <span>{char}</span>
+              <span class="cursor-pointer" phx-click="tile-click" phx-value-x={x} phx-value-y={y}>
+                {char}
+              </span>
             <% end %>
           <% end %>
         </div>

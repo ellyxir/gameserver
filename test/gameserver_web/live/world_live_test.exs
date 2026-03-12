@@ -4,6 +4,8 @@ defmodule GameserverWeb.WorldLiveTest do
 
   import Phoenix.LiveViewTest
 
+  import ExUnit.CaptureLog
+
   alias Gameserver.User
   alias Gameserver.WorldServer
 
@@ -120,6 +122,122 @@ defmodule GameserverWeb.WorldLiveTest do
       # Wait for pubsub update
       html = render(view)
       refute html =~ "leavinguser"
+    end
+  end
+
+  # TODO(@ellyxir): replace log-based assertions with state change
+  # assertions once movement updates player position
+  describe "keyboard input" do
+    setup do
+      previous_level = Logger.level()
+      Logger.configure(level: :debug)
+      on_exit(fn -> Logger.configure(level: previous_level) end)
+    end
+
+    @tag capture_log: true
+    test "wasd keys map to cardinal directions", %{conn: conn} do
+      {:ok, user} = User.new("wasduser")
+      {:ok, _position} = WorldServer.join(user)
+      {:ok, view, _html} = live(conn, ~p"/world?user_id=#{user.id}")
+
+      for {key, direction} <- [{"w", "north"}, {"a", "west"}, {"s", "south"}, {"d", "east"}] do
+        log =
+          capture_log(fn ->
+            render_keydown(view, "keydown", %{"key" => key})
+          end)
+
+        assert log =~ direction, "expected #{key} to map to #{direction}"
+      end
+    end
+
+    @tag capture_log: true
+    test "arrow keys map to cardinal directions", %{conn: conn} do
+      {:ok, user} = User.new("arrowuser")
+      {:ok, _position} = WorldServer.join(user)
+      {:ok, view, _html} = live(conn, ~p"/world?user_id=#{user.id}")
+
+      for {key, direction} <-
+            [
+              {"ArrowUp", "north"},
+              {"ArrowLeft", "west"},
+              {"ArrowDown", "south"},
+              {"ArrowRight", "east"}
+            ] do
+        log =
+          capture_log(fn ->
+            render_keydown(view, "keydown", %{"key" => key})
+          end)
+
+        assert log =~ direction, "expected #{key} to map to #{direction}"
+      end
+    end
+
+    test "unmapped keys don't crash", %{conn: conn} do
+      {:ok, user} = User.new("otherkey")
+      {:ok, _position} = WorldServer.join(user)
+      {:ok, view, _html} = live(conn, ~p"/world?user_id=#{user.id}")
+
+      render_keydown(view, "keydown", %{"key" => "x"})
+
+      assert render(view) =~ "Online Users"
+    end
+  end
+
+  # TODO(@ellyxir): replace log-based assertions with state change
+  # assertions once movement updates player position
+  describe "tile click input" do
+    setup do
+      previous_level = Logger.level()
+      Logger.configure(level: :debug)
+      on_exit(fn -> Logger.configure(level: previous_level) end)
+    end
+
+    @tag capture_log: true
+    test "clicking tiles in each direction sends correct direction", %{conn: conn} do
+      {:ok, user} = User.new("tapper")
+      {:ok, {px, py}} = WorldServer.join(user)
+      {:ok, view, _html} = live(conn, ~p"/world?user_id=#{user.id}")
+
+      for {dx, dy, direction} <- [
+            {1, 0, "east"},
+            {-1, 0, "west"},
+            {0, -1, "north"},
+            {0, 1, "south"}
+          ] do
+        log =
+          capture_log(fn ->
+            render_click(view, "tile-click", %{
+              "x" => to_string(px + dx),
+              "y" => to_string(py + dy)
+            })
+          end)
+
+        assert log =~ direction, "expected click at offset {#{dx}, #{dy}} to map to #{direction}"
+      end
+    end
+
+    test "clicking own tile doesn't crash", %{conn: conn} do
+      {:ok, user} = User.new("selftapper")
+      {:ok, {px, py}} = WorldServer.join(user)
+      {:ok, view, _html} = live(conn, ~p"/world?user_id=#{user.id}")
+
+      render_click(view, "tile-click", %{"x" => to_string(px), "y" => to_string(py)})
+
+      assert render(view) =~ "Online Users"
+    end
+
+    @tag capture_log: true
+    test "diagonal click picks dominant axis", %{conn: conn} do
+      {:ok, user} = User.new("diagtapper")
+      {:ok, {px, py}} = WorldServer.join(user)
+      {:ok, view, _html} = live(conn, ~p"/world?user_id=#{user.id}")
+
+      log =
+        capture_log(fn ->
+          render_click(view, "tile-click", %{"x" => to_string(px + 3), "y" => to_string(py + 1)})
+        end)
+
+      assert log =~ "east"
     end
   end
 end
