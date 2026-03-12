@@ -7,8 +7,6 @@ defmodule GameserverWeb.WorldLive do
 
   use GameserverWeb, :live_view
 
-  require Logger
-
   alias Gameserver.Map, as: GameMap
   alias Gameserver.WorldServer
 
@@ -90,8 +88,18 @@ defmodule GameserverWeb.WorldLive do
   @spec move_player(Phoenix.LiveView.Socket.t(), GameMap.direction()) ::
           {:noreply, Phoenix.LiveView.Socket.t()}
   defp move_player(socket, direction) do
-    Logger.debug("player-move user=#{socket.assigns.user_id} direction=#{direction}")
-    {:noreply, socket}
+    case WorldServer.move(socket.assigns.user_id, direction) do
+      {:ok, {x, y}} ->
+        {:noreply,
+         assign(socket,
+           player_position: {x, y},
+           player_x: x,
+           player_y: y
+         )}
+
+      {:error, :collision} ->
+        {:noreply, socket}
+    end
   end
 
   @impl Phoenix.LiveView
