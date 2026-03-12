@@ -85,6 +85,18 @@ defmodule Gameserver.WorldServer do
   end
 
   @doc """
+  Moves a player one step in the given direction.
+
+  Returns `{:ok, new_position}` on success, `{:error, :collision}` if the
+  destination is blocked, or `{:error, :not_found}` if the player is not in the world.
+  """
+  @spec move(Ecto.UUID.t(), GameMap.direction(), GenServer.server()) ::
+          {:ok, GameMap.coord()} | {:error, :not_found | :collision}
+  def move(user_id, direction, server \\ __MODULE__) when is_binary(user_id) do
+    GenServer.call(server, {:move, user_id, direction})
+  end
+
+  @doc """
   Returns the PubSub topic for presence updates.
 
   Subscribe to receive `{:user_joined, user}` and `{:user_left, user}` messages.
@@ -190,6 +202,30 @@ defmodule Gameserver.WorldServer do
       end
 
     {:reply, result, state}
+  end
+
+  @impl GenServer
+  def handle_call(
+        {:move, user_id, direction},
+        _from,
+        %__MODULE__{players: players, map: map} = state
+      ) do
+    case Map.get(players, user_id) do
+      nil ->
+        {:reply, {:error, :not_found}, state}
+
+      %Player{position: position} = player ->
+        destination = GameMap.interpolate(position, direction)
+
+        if GameMap.collision?(map, position, destination) do
+          {:reply, {:error, :collision}, state}
+        else
+          updated_player = %{player | position: destination}
+
+          {:reply, {:ok, destination},
+           %{state | players: Map.put(players, user_id, updated_player)}}
+        end
+    end
   end
 
   # Private helpers

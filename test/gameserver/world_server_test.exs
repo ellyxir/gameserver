@@ -162,6 +162,38 @@ defmodule Gameserver.WorldServerTest do
     end
   end
 
+  describe "move/3" do
+    test "moves player and returns new position", %{server: server} do
+      {:ok, user} = User.new("alice")
+      {:ok, _spawn} = WorldServer.join(user, server)
+
+      # spawn is on upstairs tile at {1,1} in sample_dungeon, move east to {2,1} which is floor
+      assert {:ok, {2, 1}} = WorldServer.move(user.id, :east, server)
+      assert {:ok, {2, 1}} = WorldServer.get_position(user.id, server)
+    end
+
+    test "returns error when moving into a wall", %{server: server} do
+      {:ok, user} = User.new("alice")
+      {:ok, _spawn} = WorldServer.join(user, server)
+
+      # spawn is {1,1}, moving north hits wall at {1,0}
+      assert {:error, :collision} = WorldServer.move(user.id, :north, server)
+    end
+
+    test "returns error for unknown player", %{server: server} do
+      fake_id = Ecto.UUID.generate()
+      assert {:error, :not_found} = WorldServer.move(fake_id, :east, server)
+    end
+
+    test "position unchanged after collision", %{server: server} do
+      {:ok, user} = User.new("alice")
+      {:ok, spawn} = WorldServer.join(user, server)
+
+      WorldServer.move(user.id, :north, server)
+      assert {:ok, ^spawn} = WorldServer.get_position(user.id, server)
+    end
+  end
+
   describe "pubsub broadcasts" do
     test "broadcasts user_joined on successful join", %{server: server} do
       Phoenix.PubSub.subscribe(Gameserver.PubSub, "world:presence")
