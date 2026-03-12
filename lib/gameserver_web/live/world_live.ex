@@ -33,14 +33,12 @@ defmodule GameserverWeb.WorldLive do
           Map.new(all_players, fn {id, uname, pos} -> {id, {uname, pos}} end)
 
         if Map.has_key?(player_positions, user_id) do
-          users = WorldServer.who()
           map_cells = GameMap.sample_dungeon() |> GameMap.to_cells()
 
           {:ok,
            assign(socket,
              user_id: user_id,
              username: username,
-             users: users,
              map_cells: map_cells,
              player_positions: player_positions
            )}
@@ -101,9 +99,18 @@ defmodule GameserverWeb.WorldLive do
   end
 
   @impl Phoenix.LiveView
-  def handle_info({:user_joined, _user}, socket) do
-    users = WorldServer.who()
-    {:noreply, assign(socket, users: users)}
+  def handle_info({:user_joined, user}, socket) do
+    case WorldServer.get_position(user.id) do
+      {:ok, position} ->
+        player_positions =
+          Map.put(socket.assigns.player_positions, user.id, {user.username, position})
+
+        {:noreply, assign(socket, player_positions: player_positions)}
+
+      {:error, :not_found} ->
+        Logger.warning("user_joined but no position found for #{user.id}")
+        {:noreply, socket}
+    end
   end
 
   def handle_info({:player_moved, user_id, position}, socket) do
@@ -120,8 +127,8 @@ defmodule GameserverWeb.WorldLive do
     if user.id == socket.assigns.user_id do
       {:noreply, push_navigate(socket, to: ~p"/game")}
     else
-      users = WorldServer.who()
-      {:noreply, assign(socket, users: users)}
+      player_positions = Map.delete(socket.assigns.player_positions, user.id)
+      {:noreply, assign(socket, player_positions: player_positions)}
     end
   end
 
@@ -152,6 +159,11 @@ defmodule GameserverWeb.WorldLive do
   @spec players_at(player_positions(), GameMap.coord()) :: [Ecto.UUID.t()]
   defp players_at(player_positions, coord) do
     for {id, {_username, pos}} <- player_positions, pos == coord, do: id
+  end
+
+  @spec usernames(player_positions()) :: [User.username()]
+  defp usernames(player_positions) do
+    for {_id, {username, _pos}} <- player_positions, do: username
   end
 
   @spec validate_user(String.t() | nil) :: {:ok, String.t()} | :error
