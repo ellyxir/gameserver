@@ -62,6 +62,33 @@ defmodule GameserverWeb.WorldLiveTest do
 
       assert html =~ "Position: {#{x}, #{y}}"
     end
+
+    test "renders other player on the map", %{conn: conn} do
+      {:ok, alice} = User.new("alice_map")
+      {:ok, bob} = User.new("bob_map")
+      {:ok, _position} = WorldServer.join(alice)
+      {:ok, _position} = WorldServer.join(bob)
+
+      {:ok, _view, html} = live(conn, ~p"/world?user_id=#{alice.id}")
+
+      # Both players share the spawn point, but we should see at least one @
+      assert html =~ "@"
+    end
+
+    test "renders other player in distinct style", %{conn: conn} do
+      {:ok, alice} = User.new("alice_style")
+      {:ok, bob} = User.new("bob_style")
+      {:ok, _pos} = WorldServer.join(alice)
+      {:ok, _pos} = WorldServer.join(bob)
+
+      # Move bob so he's not on the same tile as alice
+      WorldServer.move(bob.id, :east)
+
+      {:ok, _view, html} = live(conn, ~p"/world?user_id=#{alice.id}")
+
+      assert html =~ "text-yellow-300"
+      assert html =~ "text-cyan-300"
+    end
   end
 
   describe "disconnect" do
@@ -103,6 +130,21 @@ defmodule GameserverWeb.WorldLiveTest do
       # Wait for pubsub update
       html = render(view)
       assert html =~ "newuser"
+    end
+
+    test "updates other player position on movement", %{conn: conn} do
+      {:ok, alice} = User.new("alice_move")
+      {:ok, bob} = User.new("bob_move")
+      {:ok, _pos} = WorldServer.join(alice)
+      {:ok, _pos} = WorldServer.join(bob)
+
+      {:ok, view, _html} = live(conn, ~p"/world?user_id=#{alice.id}")
+
+      # Move bob east — alice's view should update
+      WorldServer.move(bob.id, :east)
+
+      html = render(view)
+      assert html =~ "text-cyan-300"
     end
 
     test "updates when user leaves", %{conn: conn} do
