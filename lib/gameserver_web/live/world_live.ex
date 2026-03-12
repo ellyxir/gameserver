@@ -18,6 +18,7 @@ defmodule GameserverWeb.WorldLive do
       {:ok, username} ->
         if connected?(socket) do
           Phoenix.PubSub.subscribe(Gameserver.PubSub, WorldServer.presence_topic())
+          Phoenix.PubSub.subscribe(Gameserver.PubSub, WorldServer.movement_topic())
         end
 
         case WorldServer.get_position(user_id) do
@@ -86,19 +87,22 @@ defmodule GameserverWeb.WorldLive do
   @spec move_player(Phoenix.LiveView.Socket.t(), GameMap.direction()) ::
           {:noreply, Phoenix.LiveView.Socket.t()}
   defp move_player(socket, direction) do
-    case WorldServer.move(socket.assigns.user_id, direction) do
-      {:ok, position} ->
-        {:noreply, assign(socket, player_position: position)}
-
-      {:error, :collision} ->
-        {:noreply, socket}
-    end
+    WorldServer.move(socket.assigns.user_id, direction)
+    {:noreply, socket}
   end
 
   @impl Phoenix.LiveView
   def handle_info({:user_joined, _user}, socket) do
     users = WorldServer.who()
     {:noreply, assign(socket, users: users)}
+  end
+
+  def handle_info({:player_moved, user_id, position}, socket) do
+    if user_id == socket.assigns.user_id do
+      {:noreply, assign(socket, player_position: position)}
+    else
+      {:noreply, socket}
+    end
   end
 
   def handle_info({:user_left, user}, socket) do

@@ -130,8 +130,8 @@ defmodule GameserverWeb.WorldLiveTest do
       {:ok, view, _html} = live(conn, ~p"/world?user_id=#{user.id}")
 
       # move east (d key) from spawn {1,1} to {2,1}
-      html = render_keydown(view, "keydown", %{"key" => "d"})
-      assert html =~ "Position: {#{px + 1}, #{py}}"
+      render_keydown(view, "keydown", %{"key" => "d"})
+      assert render(view) =~ "Position: {#{px + 1}, #{py}}"
     end
 
     test "arrow keys move the player", %{conn: conn} do
@@ -139,8 +139,8 @@ defmodule GameserverWeb.WorldLiveTest do
       {:ok, {px, py}} = WorldServer.join(user)
       {:ok, view, _html} = live(conn, ~p"/world?user_id=#{user.id}")
 
-      html = render_keydown(view, "keydown", %{"key" => "ArrowRight"})
-      assert html =~ "Position: {#{px + 1}, #{py}}"
+      render_keydown(view, "keydown", %{"key" => "ArrowRight"})
+      assert render(view) =~ "Position: {#{px + 1}, #{py}}"
     end
 
     test "unmapped keys don't crash", %{conn: conn} do
@@ -161,13 +161,12 @@ defmodule GameserverWeb.WorldLiveTest do
       {:ok, view, _html} = live(conn, ~p"/world?user_id=#{user.id}")
 
       # click east of spawn
-      html =
-        render_click(view, "tile-click", %{
-          "x" => to_string(px + 1),
-          "y" => to_string(py)
-        })
+      render_click(view, "tile-click", %{
+        "x" => to_string(px + 1),
+        "y" => to_string(py)
+      })
 
-      assert html =~ "Position: {#{px + 1}, #{py}}"
+      assert render(view) =~ "Position: {#{px + 1}, #{py}}"
     end
 
     test "clicking own tile doesn't crash", %{conn: conn} do

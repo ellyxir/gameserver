@@ -249,5 +249,26 @@ defmodule Gameserver.WorldServerTest do
 
       refute_receive {:user_left, _}
     end
+
+    test "broadcasts player_moved on successful move", %{server: server} do
+      Phoenix.PubSub.subscribe(Gameserver.PubSub, WorldServer.movement_topic())
+      {:ok, alice} = User.new("alice")
+      {:ok, _position} = WorldServer.join(alice, server)
+
+      {:ok, new_pos} = WorldServer.move(alice.id, :east, server)
+
+      assert_receive {:player_moved, alice_id, ^new_pos}
+      assert alice_id == alice.id
+    end
+
+    test "does not broadcast on collision", %{server: server} do
+      Phoenix.PubSub.subscribe(Gameserver.PubSub, WorldServer.movement_topic())
+      {:ok, alice} = User.new("alice")
+      {:ok, _position} = WorldServer.join(alice, server)
+
+      {:error, :collision} = WorldServer.move(alice.id, :north, server)
+
+      refute_receive {:player_moved, _, _}
+    end
   end
 end

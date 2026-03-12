@@ -15,6 +15,7 @@ defmodule Gameserver.WorldServer do
   @type join_error() :: :already_joined | :username_not_available | :no_spawn_point
 
   @presence_topic "world:presence"
+  @movement_topic "world:movement"
 
   # Client API
 
@@ -103,6 +104,14 @@ defmodule Gameserver.WorldServer do
   """
   @spec presence_topic() :: String.t()
   def presence_topic, do: @presence_topic
+
+  @doc """
+  Returns the PubSub topic for movement updates.
+
+  Subscribe to receive `{:player_moved, user_id, position}` messages.
+  """
+  @spec movement_topic() :: String.t()
+  def movement_topic, do: @movement_topic
 
   # Server callbacks
 
@@ -214,16 +223,14 @@ defmodule Gameserver.WorldServer do
       nil ->
         {:reply, {:error, :not_found}, state}
 
-      %Player{position: position} = player ->
-        destination = GameMap.interpolate(position, direction)
+      %Player{} = player ->
+        case apply_move_and_notify(player, user_id, direction, map) do
+          {:ok, %Player{position: destination} = updated_player} ->
+            {:reply, {:ok, destination},
+             %{state | players: Map.put(players, user_id, updated_player)}}
 
-        if GameMap.collision?(map, position, destination) do
-          {:reply, {:error, :collision}, state}
-        else
-          updated_player = %{player | position: destination}
-
-          {:reply, {:ok, destination},
-           %{state | players: Map.put(players, user_id, updated_player)}}
+          {:error, :collision} ->
+            {:reply, {:error, :collision}, state}
         end
     end
   end
@@ -244,6 +251,19 @@ defmodule Gameserver.WorldServer do
     {id, username, position}
   end
 
+  @spec apply_move_and_notify(Player.t(), Ecto.UUID.t(), GameMap.direction(), GameMap.t()) ::
+          {:ok, Player.t()} | {:error, :collision}
+  defp apply_move_and_notify(%Player{position: position} = player, user_id, direction, map) do
+    destination = GameMap.interpolate(position, direction)
+
+    if GameMap.collision?(map, position, destination) do
+      {:error, :collision}
+    else
+      broadcast_movement({:player_moved, user_id, destination})
+      {:ok, %{player | position: destination}}
+    end
+  end
+
   @spec username_taken?(%{Ecto.UUID.t() => Player.t()}, User.username()) :: boolean()
   defp username_taken?(players, username) do
     Enum.any?(players, fn {_id, %Player{user: user}} -> user.username == username end)
@@ -252,5 +272,10 @@ defmodule Gameserver.WorldServer do
   @spec broadcast_presence({:user_joined | :user_left, User.t()}) :: :ok
   defp broadcast_presence(message) do
     Phoenix.PubSub.broadcast(Gameserver.PubSub, @presence_topic, message)
+  end
+
+  @spec broadcast_movement({:player_moved, Ecto.UUID.t(), GameMap.coord()}) :: :ok
+  defp broadcast_movement(message) do
+    Phoenix.PubSub.broadcast(Gameserver.PubSub, @movement_topic, message)
   end
 end
