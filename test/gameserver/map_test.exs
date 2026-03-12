@@ -269,6 +269,38 @@ defmodule Gameserver.MapTest do
     end
   end
 
+  describe "collision?/3 (path)" do
+    test "no collision on clear path" do
+      map = GameMap.new(5, 1, default: :floor)
+      refute GameMap.collision?(map, {0, 0}, {3, 0})
+    end
+
+    test "wall in path causes collision" do
+      map = GameMap.new(5, 1, default: :floor) |> GameMap.set_tile({2, 0}, :wall)
+      assert GameMap.collision?(map, {0, 0}, {4, 0})
+    end
+
+    test "does not check the starting tile" do
+      map = GameMap.new(5, 1, default: :floor) |> GameMap.set_tile({0, 0}, :wall)
+      refute GameMap.collision?(map, {0, 0}, {3, 0})
+    end
+
+    test "checks destination tile" do
+      map = GameMap.new(5, 1, default: :floor) |> GameMap.set_tile({3, 0}, :wall)
+      assert GameMap.collision?(map, {0, 0}, {3, 0})
+    end
+
+    test "works vertically" do
+      map = GameMap.new(1, 5, default: :floor) |> GameMap.set_tile({0, 2}, :wall)
+      assert GameMap.collision?(map, {0, 0}, {0, 4})
+    end
+
+    test "dest out of bounds causes collision" do
+      map = GameMap.new(5, 1, default: :floor)
+      assert GameMap.collision?(map, {3, 0}, {5, 0})
+    end
+  end
+
   describe "parse_coord/2" do
     test "converts string pair to coord tuple" do
       assert GameMap.parse_coord("3", "7") == {3, 7}

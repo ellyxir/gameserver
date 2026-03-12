@@ -222,6 +222,21 @@ defmodule Gameserver.Map do
     end
   end
 
+  @doc "Returns true if any tile along the path from src to dest is blocked. Excludes src, includes dest."
+  @spec collision?(t(), coord(), coord()) :: boolean()
+  def collision?(%__MODULE__{} = map, {sx, sy}, {dx, dy}) do
+    coords =
+      for x <- range(sx, dx), y <- range(sy, dy), {x, y} != {sx, sy} do
+        {x, y}
+      end
+
+    Enum.any?(coords, &collision?(map, &1))
+  end
+
+  defp range(a, a), do: [a]
+  defp range(a, b) when a < b, do: a..b
+  defp range(a, b), do: a..b//-1
+
   @doc "Returns the coordinate a given number of units in the given direction. Does not check bounds."
   @spec interpolate(coord(), direction(), pos_integer()) :: coord()
   def interpolate(coord, direction, units \\ 1)
