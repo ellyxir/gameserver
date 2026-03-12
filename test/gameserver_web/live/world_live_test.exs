@@ -132,6 +132,21 @@ defmodule GameserverWeb.WorldLiveTest do
       assert html =~ "newuser"
     end
 
+    test "updates other player position on movement", %{conn: conn} do
+      {:ok, alice} = User.new("alice_move")
+      {:ok, bob} = User.new("bob_move")
+      {:ok, _pos} = WorldServer.join(alice)
+      {:ok, _pos} = WorldServer.join(bob)
+
+      {:ok, view, _html} = live(conn, ~p"/world?user_id=#{alice.id}")
+
+      # Move bob east — alice's view should update
+      WorldServer.move(bob.id, :east)
+
+      html = render(view)
+      assert html =~ "text-cyan-300"
+    end
+
     test "updates when user leaves", %{conn: conn} do
       {:ok, alice} = User.new("pubsubalice2")
       {:ok, bob} = User.new("leavinguser")

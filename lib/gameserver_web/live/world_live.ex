@@ -7,6 +7,8 @@ defmodule GameserverWeb.WorldLive do
 
   use GameserverWeb, :live_view
 
+  require Logger
+
   alias Gameserver.Map, as: GameMap
   alias Gameserver.User
   alias Gameserver.WorldServer
@@ -105,10 +107,11 @@ defmodule GameserverWeb.WorldLive do
   end
 
   def handle_info({:player_moved, user_id, position}, socket) do
-    if user_id == socket.assigns.user_id do
+    if Map.has_key?(socket.assigns.player_positions, user_id) do
       player_positions = put_position(socket.assigns.player_positions, user_id, position)
       {:noreply, assign(socket, player_positions: player_positions)}
     else
+      Logger.warning("received player_moved for unknown player #{user_id}")
       {:noreply, socket}
     end
   end
