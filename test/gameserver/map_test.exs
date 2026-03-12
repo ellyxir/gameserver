@@ -219,6 +219,88 @@ defmodule Gameserver.MapTest do
     end
   end
 
+  describe "interpolate/3" do
+    test "moves north (decreases y)" do
+      assert GameMap.interpolate({5, 5}, :north) == {5, 4}
+    end
+
+    test "moves south (increases y)" do
+      assert GameMap.interpolate({5, 5}, :south) == {5, 6}
+    end
+
+    test "moves east (increases x)" do
+      assert GameMap.interpolate({5, 5}, :east) == {6, 5}
+    end
+
+    test "moves west (decreases x)" do
+      assert GameMap.interpolate({5, 5}, :west) == {4, 5}
+    end
+
+    test "moves multiple units" do
+      assert GameMap.interpolate({5, 5}, :north, 3) == {5, 2}
+      assert GameMap.interpolate({5, 5}, :east, 4) == {9, 5}
+    end
+  end
+
+  describe "collision?/2" do
+    test "floor tiles have no collision" do
+      map = GameMap.new(3, 3, default: :floor)
+      refute GameMap.collision?(map, {1, 1})
+    end
+
+    test "wall tiles have collision" do
+      map = GameMap.new(3, 3)
+      assert GameMap.collision?(map, {1, 1})
+    end
+
+    test "door and stair tiles have no collision" do
+      map = GameMap.new(3, 3)
+      refute GameMap.collision?(GameMap.set_tile(map, {1, 1}, :door), {1, 1})
+      refute GameMap.collision?(GameMap.set_tile(map, {1, 1}, :upstairs), {1, 1})
+      refute GameMap.collision?(GameMap.set_tile(map, {1, 1}, :downstairs), {1, 1})
+    end
+
+    test "out of bounds has collision" do
+      map = GameMap.new(3, 3)
+      assert GameMap.collision?(map, {-1, 0})
+      assert GameMap.collision?(map, {3, 0})
+      assert GameMap.collision?(map, {0, -1})
+      assert GameMap.collision?(map, {0, 3})
+    end
+  end
+
+  describe "collision?/3 (path)" do
+    test "no collision on clear path" do
+      map = GameMap.new(5, 1, default: :floor)
+      refute GameMap.collision?(map, {0, 0}, {3, 0})
+    end
+
+    test "wall in path causes collision" do
+      map = GameMap.new(5, 1, default: :floor) |> GameMap.set_tile({2, 0}, :wall)
+      assert GameMap.collision?(map, {0, 0}, {4, 0})
+    end
+
+    test "does not check the starting tile" do
+      map = GameMap.new(5, 1, default: :floor) |> GameMap.set_tile({0, 0}, :wall)
+      refute GameMap.collision?(map, {0, 0}, {3, 0})
+    end
+
+    test "checks destination tile" do
+      map = GameMap.new(5, 1, default: :floor) |> GameMap.set_tile({3, 0}, :wall)
+      assert GameMap.collision?(map, {0, 0}, {3, 0})
+    end
+
+    test "works vertically" do
+      map = GameMap.new(1, 5, default: :floor) |> GameMap.set_tile({0, 2}, :wall)
+      assert GameMap.collision?(map, {0, 0}, {0, 4})
+    end
+
+    test "dest out of bounds causes collision" do
+      map = GameMap.new(5, 1, default: :floor)
+      assert GameMap.collision?(map, {3, 0}, {5, 0})
+    end
+  end
+
   describe "parse_coord/2" do
     test "converts string pair to coord tuple" do
       assert GameMap.parse_coord("3", "7") == {3, 7}

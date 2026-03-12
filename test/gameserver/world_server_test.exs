@@ -162,6 +162,55 @@ defmodule Gameserver.WorldServerTest do
     end
   end
 
+  describe "move/3" do
+    test "moves player and returns new position", %{server: server} do
+      {:ok, user} = User.new("alice")
+      {:ok, _spawn} = WorldServer.join(user, server)
+
+      # spawn is on upstairs tile at {1,1} in sample_dungeon, move east to {2,1} which is floor
+      assert {:ok, {2, 1}} = WorldServer.move(user.id, :east, server)
+      assert {:ok, {2, 1}} = WorldServer.get_position(user.id, server)
+    end
+
+    test "returns error when moving into a wall", %{server: server} do
+      {:ok, user} = User.new("alice")
+      {:ok, _spawn} = WorldServer.join(user, server)
+
+      # spawn is {1,1}, moving north hits wall at {1,0}
+      assert {:error, :collision} = WorldServer.move(user.id, :north, server)
+    end
+
+    test "returns error for unknown player", %{server: server} do
+      fake_id = Ecto.UUID.generate()
+      assert {:error, :not_found} = WorldServer.move(fake_id, :east, server)
+    end
+
+    test "returns error when on cooldown", %{server: server} do
+      {:ok, user} = User.new("alice")
+      {:ok, _spawn} = WorldServer.join(user, server)
+
+      {:ok, _pos} = WorldServer.move(user.id, :east, server)
+      assert {:error, :cooldown} = WorldServer.move(user.id, :east, server)
+    end
+
+    test "allows movement after cooldown expires", %{server: server} do
+      {:ok, user} = User.new("alice")
+      {:ok, _spawn} = WorldServer.join(user, server)
+
+      {:ok, _pos} = WorldServer.move(user.id, :east, server)
+      Process.sleep(WorldServer.move_cooldown_ms() + 1)
+      assert {:ok, _pos} = WorldServer.move(user.id, :east, server)
+    end
+
+    test "position unchanged after collision", %{server: server} do
+      {:ok, user} = User.new("alice")
+      {:ok, spawn} = WorldServer.join(user, server)
+
+      WorldServer.move(user.id, :north, server)
+      assert {:ok, ^spawn} = WorldServer.get_position(user.id, server)
+    end
+  end
+
   describe "pubsub broadcasts" do
     test "broadcasts user_joined on successful join", %{server: server} do
       Phoenix.PubSub.subscribe(Gameserver.PubSub, "world:presence")
@@ -216,6 +265,39 @@ defmodule Gameserver.WorldServerTest do
       {:error, :not_found} = WorldServer.leave(fake_id, server)
 
       refute_receive {:user_left, _}
+    end
+
+    test "broadcasts player_moved on successful move", %{server: server} do
+      Phoenix.PubSub.subscribe(Gameserver.PubSub, WorldServer.movement_topic())
+      {:ok, alice} = User.new("alice")
+      {:ok, _position} = WorldServer.join(alice, server)
+
+      {:ok, new_pos} = WorldServer.move(alice.id, :east, server)
+
+      assert_receive {:player_moved, alice_id, ^new_pos}
+      assert alice_id == alice.id
+    end
+
+    test "does not broadcast on collision", %{server: server} do
+      Phoenix.PubSub.subscribe(Gameserver.PubSub, WorldServer.movement_topic())
+      {:ok, alice} = User.new("alice")
+      {:ok, _position} = WorldServer.join(alice, server)
+
+      {:error, :collision} = WorldServer.move(alice.id, :north, server)
+
+      refute_receive {:player_moved, _, _}
+    end
+
+    test "does not broadcast on cooldown", %{server: server} do
+      Phoenix.PubSub.subscribe(Gameserver.PubSub, WorldServer.movement_topic())
+      {:ok, alice} = User.new("alice")
+      {:ok, _position} = WorldServer.join(alice, server)
+
+      {:ok, _pos} = WorldServer.move(alice.id, :east, server)
+      assert_receive {:player_moved, _, _}
+
+      {:error, :cooldown} = WorldServer.move(alice.id, :east, server)
+      refute_receive {:player_moved, _, _}
     end
   end
 end

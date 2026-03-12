@@ -2,18 +2,20 @@ defmodule Gameserver.Player do
   @moduledoc """
   Represents a player in the game world with their position.
 
-  A Player wraps a User with game-world state like position.
+  A Player wraps a User with game-world state like position and cooldowns.
   """
 
+  alias Gameserver.Cooldowns
   alias Gameserver.Map, as: GameMap
   alias Gameserver.User
 
-  defstruct [:user, :position]
+  defstruct [:user, :position, cooldowns: %Cooldowns{}]
 
   @typedoc "A player in the game world"
   @type t() :: %__MODULE__{
           user: User.t(),
-          position: GameMap.coord()
+          position: GameMap.coord(),
+          cooldowns: Cooldowns.t()
         }
 
   @doc """

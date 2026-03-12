@@ -9,7 +9,7 @@ defmodule Gameserver.Map do
   defstruct [:width, :height, :tiles]
 
   @typedoc "An {x, y} coordinate pair"
-  @type coord() :: {non_neg_integer(), non_neg_integer()}
+  @type coord() :: {integer(), integer()}
 
   @typedoc "Cardinal direction for movement."
   @type direction() :: :north | :south | :east | :west
@@ -211,6 +211,39 @@ defmodule Gameserver.Map do
       {coord, :upstairs} -> {:ok, coord}
     end
   end
+
+  @doc "Returns true if the coordinate is blocked (wall or out of bounds)."
+  @spec collision?(t(), coord()) :: boolean()
+  def collision?(%__MODULE__{} = map, coord) do
+    case get_tile(map, coord) do
+      {:ok, :wall} -> true
+      {:ok, _tile} -> false
+      {:error, :out_of_bounds} -> true
+    end
+  end
+
+  @doc "Returns true if any tile along the path from src to dest is blocked. Excludes src, includes dest."
+  @spec collision?(t(), coord(), coord()) :: boolean()
+  def collision?(%__MODULE__{} = map, {sx, sy}, {dx, dy}) do
+    coords =
+      for x <- range(sx, dx), y <- range(sy, dy), {x, y} != {sx, sy} do
+        {x, y}
+      end
+
+    Enum.any?(coords, &collision?(map, &1))
+  end
+
+  defp range(a, a), do: [a]
+  defp range(a, b) when a < b, do: a..b
+  defp range(a, b), do: a..b//-1
+
+  @doc "Returns the coordinate a given number of units in the given direction. Does not check bounds."
+  @spec interpolate(coord(), direction(), pos_integer()) :: coord()
+  def interpolate(coord, direction, units \\ 1)
+  def interpolate({x, y}, :north, units), do: {x, y - units}
+  def interpolate({x, y}, :south, units), do: {x, y + units}
+  def interpolate({x, y}, :east, units), do: {x + units, y}
+  def interpolate({x, y}, :west, units), do: {x - units, y}
 
   @doc "Parses a pair of strings into a coord tuple."
   @spec parse_coord(String.t(), String.t()) :: coord()

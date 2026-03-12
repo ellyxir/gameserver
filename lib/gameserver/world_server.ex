@@ -5,6 +5,7 @@ defmodule Gameserver.WorldServer do
 
   use GenServer
 
+  alias Gameserver.Cooldowns
   alias Gameserver.Map, as: GameMap
   alias Gameserver.Player
   alias Gameserver.User
@@ -15,6 +16,8 @@ defmodule Gameserver.WorldServer do
   @type join_error() :: :already_joined | :username_not_available | :no_spawn_point
 
   @presence_topic "world:presence"
+  @movement_topic "world:movement"
+  @move_cooldown_ms 150
 
   # Client API
 
@@ -85,12 +88,37 @@ defmodule Gameserver.WorldServer do
   end
 
   @doc """
+  Moves a player one step in the given direction.
+
+  Returns `{:ok, new_position}` on success, `{:error, :collision}` if the
+  destination is blocked, `{:error, :cooldown}` if the player moved too recently,
+  or `{:error, :not_found}` if the player is not in the world.
+  """
+  @spec move(Ecto.UUID.t(), GameMap.direction(), GenServer.server()) ::
+          {:ok, GameMap.coord()} | {:error, :not_found | :collision | :cooldown}
+  def move(user_id, direction, server \\ __MODULE__) when is_binary(user_id) do
+    GenServer.call(server, {:move, user_id, direction})
+  end
+
+  @doc """
   Returns the PubSub topic for presence updates.
 
   Subscribe to receive `{:user_joined, user}` and `{:user_left, user}` messages.
   """
   @spec presence_topic() :: String.t()
   def presence_topic, do: @presence_topic
+
+  @doc """
+  Returns the PubSub topic for movement updates.
+
+  Subscribe to receive `{:player_moved, user_id, position}` messages.
+  """
+  @spec movement_topic() :: String.t()
+  def movement_topic, do: @movement_topic
+
+  @doc "Returns the movement cooldown duration in milliseconds."
+  @spec move_cooldown_ms() :: pos_integer()
+  def move_cooldown_ms, do: @move_cooldown_ms
 
   # Server callbacks
 
@@ -192,7 +220,33 @@ defmodule Gameserver.WorldServer do
     {:reply, result, state}
   end
 
+  @impl GenServer
+  def handle_call(
+        {:move, user_id, direction},
+        _from,
+        %__MODULE__{players: players, map: map} = state
+      ) do
+    with {:ok, player} <- get_player(players, user_id),
+         :ok <- Cooldowns.check(player.cooldowns, :move),
+         {:ok, updated_player} <- apply_move_and_notify(player, direction, map) do
+      %Player{position: destination} = updated_player
+      new_state = %{state | players: Map.put(players, user_id, updated_player)}
+      {:reply, {:ok, destination}, new_state}
+    else
+      {:error, reason} -> {:reply, {:error, reason}, state}
+    end
+  end
+
   # Private helpers
+
+  @spec get_player(%{Ecto.UUID.t() => Player.t()}, Ecto.UUID.t()) ::
+          {:ok, Player.t()} | {:error, :not_found}
+  defp get_player(players, user_id) do
+    case Map.get(players, user_id) do
+      nil -> {:error, :not_found}
+      %Player{} = player -> {:ok, player}
+    end
+  end
 
   @spec player_to_tuple(Player.t()) :: {Ecto.UUID.t(), User.username()}
   defp player_to_tuple(%Player{user: %User{id: id, username: username}}) do
@@ -208,6 +262,20 @@ defmodule Gameserver.WorldServer do
     {id, username, position}
   end
 
+  @spec apply_move_and_notify(Player.t(), GameMap.direction(), GameMap.t()) ::
+          {:ok, Player.t()} | {:error, :collision}
+  defp apply_move_and_notify(%Player{position: position} = player, direction, map) do
+    destination = GameMap.interpolate(position, direction)
+
+    if GameMap.collision?(map, position, destination) do
+      {:error, :collision}
+    else
+      broadcast_movement({:player_moved, Player.id(player), destination})
+      updated_cooldowns = Cooldowns.start(player.cooldowns, :move, @move_cooldown_ms)
+      {:ok, %{player | position: destination, cooldowns: updated_cooldowns}}
+    end
+  end
+
   @spec username_taken?(%{Ecto.UUID.t() => Player.t()}, User.username()) :: boolean()
   defp username_taken?(players, username) do
     Enum.any?(players, fn {_id, %Player{user: user}} -> user.username == username end)
@@ -216,5 +284,10 @@ defmodule Gameserver.WorldServer do
   @spec broadcast_presence({:user_joined | :user_left, User.t()}) :: :ok
   defp broadcast_presence(message) do
     Phoenix.PubSub.broadcast(Gameserver.PubSub, @presence_topic, message)
+  end
+
+  @spec broadcast_movement({:player_moved, Ecto.UUID.t(), GameMap.coord()}) :: :ok
+  defp broadcast_movement(message) do
+    Phoenix.PubSub.broadcast(Gameserver.PubSub, @movement_topic, message)
   end
 end

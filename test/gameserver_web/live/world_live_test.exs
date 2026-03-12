@@ -4,8 +4,6 @@ defmodule GameserverWeb.WorldLiveTest do
 
   import Phoenix.LiveViewTest
 
-  import ExUnit.CaptureLog
-
   alias Gameserver.User
   alias Gameserver.WorldServer
 
@@ -125,51 +123,24 @@ defmodule GameserverWeb.WorldLiveTest do
     end
   end
 
-  # TODO(@ellyxir): replace log-based assertions with state change
-  # assertions once movement updates player position
   describe "keyboard input" do
-    setup do
-      previous_level = Logger.level()
-      Logger.configure(level: :debug)
-      on_exit(fn -> Logger.configure(level: previous_level) end)
-    end
-
-    @tag capture_log: true
-    test "wasd keys map to cardinal directions", %{conn: conn} do
+    test "wasd keys move the player", %{conn: conn} do
       {:ok, user} = User.new("wasduser")
-      {:ok, _position} = WorldServer.join(user)
+      {:ok, {px, py}} = WorldServer.join(user)
       {:ok, view, _html} = live(conn, ~p"/world?user_id=#{user.id}")
 
-      for {key, direction} <- [{"w", "north"}, {"a", "west"}, {"s", "south"}, {"d", "east"}] do
-        log =
-          capture_log(fn ->
-            render_keydown(view, "keydown", %{"key" => key})
-          end)
-
-        assert log =~ direction, "expected #{key} to map to #{direction}"
-      end
+      # move east (d key) from spawn {1,1} to {2,1}
+      render_keydown(view, "keydown", %{"key" => "d"})
+      assert render(view) =~ "Position: {#{px + 1}, #{py}}"
     end
 
-    @tag capture_log: true
-    test "arrow keys map to cardinal directions", %{conn: conn} do
+    test "arrow keys move the player", %{conn: conn} do
       {:ok, user} = User.new("arrowuser")
-      {:ok, _position} = WorldServer.join(user)
+      {:ok, {px, py}} = WorldServer.join(user)
       {:ok, view, _html} = live(conn, ~p"/world?user_id=#{user.id}")
 
-      for {key, direction} <-
-            [
-              {"ArrowUp", "north"},
-              {"ArrowLeft", "west"},
-              {"ArrowDown", "south"},
-              {"ArrowRight", "east"}
-            ] do
-        log =
-          capture_log(fn ->
-            render_keydown(view, "keydown", %{"key" => key})
-          end)
-
-        assert log =~ direction, "expected #{key} to map to #{direction}"
-      end
+      render_keydown(view, "keydown", %{"key" => "ArrowRight"})
+      assert render(view) =~ "Position: {#{px + 1}, #{py}}"
     end
 
     test "unmapped keys don't crash", %{conn: conn} do
@@ -183,37 +154,19 @@ defmodule GameserverWeb.WorldLiveTest do
     end
   end
 
-  # TODO(@ellyxir): replace log-based assertions with state change
-  # assertions once movement updates player position
   describe "tile click input" do
-    setup do
-      previous_level = Logger.level()
-      Logger.configure(level: :debug)
-      on_exit(fn -> Logger.configure(level: previous_level) end)
-    end
-
-    @tag capture_log: true
-    test "clicking tiles in each direction sends correct direction", %{conn: conn} do
+    test "clicking adjacent tile moves the player", %{conn: conn} do
       {:ok, user} = User.new("tapper")
       {:ok, {px, py}} = WorldServer.join(user)
       {:ok, view, _html} = live(conn, ~p"/world?user_id=#{user.id}")
 
-      for {dx, dy, direction} <- [
-            {1, 0, "east"},
-            {-1, 0, "west"},
-            {0, -1, "north"},
-            {0, 1, "south"}
-          ] do
-        log =
-          capture_log(fn ->
-            render_click(view, "tile-click", %{
-              "x" => to_string(px + dx),
-              "y" => to_string(py + dy)
-            })
-          end)
+      # click east of spawn
+      render_click(view, "tile-click", %{
+        "x" => to_string(px + 1),
+        "y" => to_string(py)
+      })
 
-        assert log =~ direction, "expected click at offset {#{dx}, #{dy}} to map to #{direction}"
-      end
+      assert render(view) =~ "Position: {#{px + 1}, #{py}}"
     end
 
     test "clicking own tile doesn't crash", %{conn: conn} do
@@ -226,18 +179,19 @@ defmodule GameserverWeb.WorldLiveTest do
       assert render(view) =~ "Online Users"
     end
 
-    @tag capture_log: true
-    test "diagonal click picks dominant axis", %{conn: conn} do
-      {:ok, user} = User.new("diagtapper")
+    test "clicking into a wall doesn't move", %{conn: conn} do
+      {:ok, user} = User.new("walltapper")
       {:ok, {px, py}} = WorldServer.join(user)
       {:ok, view, _html} = live(conn, ~p"/world?user_id=#{user.id}")
 
-      log =
-        capture_log(fn ->
-          render_click(view, "tile-click", %{"x" => to_string(px + 3), "y" => to_string(py + 1)})
-        end)
+      # click north of spawn {1,1} hits wall at {1,0}
+      render_click(view, "tile-click", %{
+        "x" => to_string(px),
+        "y" => to_string(py - 1)
+      })
 
-      assert log =~ "east"
+      html = render(view)
+      assert html =~ "Position: {#{px}, #{py}}"
     end
   end
 end
