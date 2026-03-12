@@ -11,6 +11,9 @@ defmodule Gameserver.Map do
   @typedoc "An {x, y} coordinate pair"
   @type coord() :: {non_neg_integer(), non_neg_integer()}
 
+  @typedoc "Cardinal direction for movement."
+  @type direction() :: :north | :south | :east | :west
+
   @type width() :: pos_integer()
   @type height() :: pos_integer()
 

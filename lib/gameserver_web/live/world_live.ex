@@ -47,9 +47,6 @@ defmodule GameserverWeb.WorldLive do
     end
   end
 
-  # Cardinal direction for player movement.
-  @typep direction() :: :north | :south | :east | :west
-
   @key_to_direction %{
     "w" => :north,
     "a" => :west,
@@ -79,7 +76,7 @@ defmodule GameserverWeb.WorldLive do
     end
   end
 
-  @spec direction_from(GameMap.coord(), GameMap.coord()) :: direction() | nil
+  @spec direction_from(GameMap.coord(), GameMap.coord()) :: GameMap.direction() | nil
   defp direction_from(same, same), do: nil
 
   defp direction_from({fx, fy}, {tx, ty}) do
@@ -93,7 +90,7 @@ defmodule GameserverWeb.WorldLive do
     end
   end
 
-  @spec move_player(Phoenix.LiveView.Socket.t(), direction()) ::
+  @spec move_player(Phoenix.LiveView.Socket.t(), GameMap.direction()) ::
           {:noreply, Phoenix.LiveView.Socket.t()}
   defp move_player(socket, direction) do
     Logger.debug("player-move user=#{socket.assigns.user_id} direction=#{direction}")
