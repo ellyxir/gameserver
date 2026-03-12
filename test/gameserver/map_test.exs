@@ -242,6 +242,33 @@ defmodule Gameserver.MapTest do
     end
   end
 
+  describe "collision?/2" do
+    test "floor tiles have no collision" do
+      map = GameMap.new(3, 3, default: :floor)
+      refute GameMap.collision?(map, {1, 1})
+    end
+
+    test "wall tiles have collision" do
+      map = GameMap.new(3, 3)
+      assert GameMap.collision?(map, {1, 1})
+    end
+
+    test "door and stair tiles have no collision" do
+      map = GameMap.new(3, 3)
+      refute GameMap.collision?(GameMap.set_tile(map, {1, 1}, :door), {1, 1})
+      refute GameMap.collision?(GameMap.set_tile(map, {1, 1}, :upstairs), {1, 1})
+      refute GameMap.collision?(GameMap.set_tile(map, {1, 1}, :downstairs), {1, 1})
+    end
+
+    test "out of bounds has collision" do
+      map = GameMap.new(3, 3)
+      assert GameMap.collision?(map, {-1, 0})
+      assert GameMap.collision?(map, {3, 0})
+      assert GameMap.collision?(map, {0, -1})
+      assert GameMap.collision?(map, {0, 3})
+    end
+  end
+
   describe "parse_coord/2" do
     test "converts string pair to coord tuple" do
       assert GameMap.parse_coord("3", "7") == {3, 7}

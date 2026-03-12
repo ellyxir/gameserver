@@ -212,6 +212,16 @@ defmodule Gameserver.Map do
     end
   end
 
+  @doc "Returns true if the coordinate is blocked (wall or out of bounds)."
+  @spec collision?(t(), coord()) :: boolean()
+  def collision?(%__MODULE__{} = map, coord) do
+    case get_tile(map, coord) do
+      {:ok, :wall} -> true
+      {:ok, _tile} -> false
+      {:error, :out_of_bounds} -> true
+    end
+  end
+
   @doc "Returns the coordinate a given number of units in the given direction. Does not check bounds."
   @spec interpolate(coord(), direction(), pos_integer()) :: coord()
   def interpolate(coord, direction, units \\ 1)
