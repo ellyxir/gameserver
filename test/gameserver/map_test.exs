@@ -219,6 +219,29 @@ defmodule Gameserver.MapTest do
     end
   end
 
+  describe "interpolate/3" do
+    test "moves north (decreases y)" do
+      assert GameMap.interpolate({5, 5}, :north) == {5, 4}
+    end
+
+    test "moves south (increases y)" do
+      assert GameMap.interpolate({5, 5}, :south) == {5, 6}
+    end
+
+    test "moves east (increases x)" do
+      assert GameMap.interpolate({5, 5}, :east) == {6, 5}
+    end
+
+    test "moves west (decreases x)" do
+      assert GameMap.interpolate({5, 5}, :west) == {4, 5}
+    end
+
+    test "moves multiple units" do
+      assert GameMap.interpolate({5, 5}, :north, 3) == {5, 2}
+      assert GameMap.interpolate({5, 5}, :east, 4) == {9, 5}
+    end
+  end
+
   describe "parse_coord/2" do
     test "converts string pair to coord tuple" do
       assert GameMap.parse_coord("3", "7") == {3, 7}

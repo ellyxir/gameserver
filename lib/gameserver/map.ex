@@ -9,7 +9,7 @@ defmodule Gameserver.Map do
   defstruct [:width, :height, :tiles]
 
   @typedoc "An {x, y} coordinate pair"
-  @type coord() :: {non_neg_integer(), non_neg_integer()}
+  @type coord() :: {integer(), integer()}
 
   @typedoc "Cardinal direction for movement."
   @type direction() :: :north | :south | :east | :west
@@ -211,6 +211,14 @@ defmodule Gameserver.Map do
       {coord, :upstairs} -> {:ok, coord}
     end
   end
+
+  @doc "Returns the coordinate a given number of units in the given direction. Does not check bounds."
+  @spec interpolate(coord(), direction(), pos_integer()) :: coord()
+  def interpolate(coord, direction, units \\ 1)
+  def interpolate({x, y}, :north, units), do: {x, y - units}
+  def interpolate({x, y}, :south, units), do: {x, y + units}
+  def interpolate({x, y}, :east, units), do: {x + units, y}
+  def interpolate({x, y}, :west, units), do: {x - units, y}
 
   @doc "Parses a pair of strings into a coord tuple."
   @spec parse_coord(String.t(), String.t()) :: coord()
