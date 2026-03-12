@@ -31,9 +31,7 @@ defmodule GameserverWeb.WorldLive do
                username: username,
                users: users,
                map_cells: map_cells,
-               player_position: {px, py},
-               player_x: px,
-               player_y: py
+               player_position: {px, py}
              )}
 
           {:error, :not_found} ->
@@ -89,13 +87,8 @@ defmodule GameserverWeb.WorldLive do
           {:noreply, Phoenix.LiveView.Socket.t()}
   defp move_player(socket, direction) do
     case WorldServer.move(socket.assigns.user_id, direction) do
-      {:ok, {x, y}} ->
-        {:noreply,
-         assign(socket,
-           player_position: {x, y},
-           player_x: x,
-           player_y: y
-         )}
+      {:ok, position} ->
+        {:noreply, assign(socket, player_position: position)}
 
       {:error, :collision} ->
         {:noreply, socket}
