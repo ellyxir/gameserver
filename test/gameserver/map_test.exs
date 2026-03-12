@@ -218,4 +218,14 @@ defmodule Gameserver.MapTest do
       assert {:error, :no_spawn_point} = GameMap.get_spawn_point(map)
     end
   end
+
+  describe "parse_coord/2" do
+    test "converts string pair to coord tuple" do
+      assert GameMap.parse_coord("3", "7") == {3, 7}
+    end
+
+    test "handles zero" do
+      assert GameMap.parse_coord("0", "0") == {0, 0}
+    end
+  end
 end

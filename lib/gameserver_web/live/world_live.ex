@@ -67,10 +67,7 @@ defmodule GameserverWeb.WorldLive do
   end
 
   def handle_event("tile-click", %{"x" => x, "y" => y}, socket) do
-    case direction_from(
-           socket.assigns.player_position,
-           {String.to_integer(x), String.to_integer(y)}
-         ) do
+    case direction_from(socket.assigns.player_position, GameMap.parse_coord(x, y)) do
       nil -> {:noreply, socket}
       direction -> move_player(socket, direction)
     end

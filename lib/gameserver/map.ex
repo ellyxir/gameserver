@@ -212,6 +212,10 @@ defmodule Gameserver.Map do
     end
   end
 
+  @doc "Parses a pair of strings into a coord tuple."
+  @spec parse_coord(String.t(), String.t()) :: coord()
+  def parse_coord(x, y), do: {String.to_integer(x), String.to_integer(y)}
+
   @spec tile_to_char(tile()) :: String.t()
   for {tile, c} <- @tile_chars do
     defp tile_to_char(unquote(tile)), do: unquote(c)
