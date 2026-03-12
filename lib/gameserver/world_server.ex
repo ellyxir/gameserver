@@ -5,6 +5,7 @@ defmodule Gameserver.WorldServer do
 
   use GenServer
 
+  alias Gameserver.Cooldowns
   alias Gameserver.Map, as: GameMap
   alias Gameserver.Player
   alias Gameserver.User
@@ -16,6 +17,7 @@ defmodule Gameserver.WorldServer do
 
   @presence_topic "world:presence"
   @movement_topic "world:movement"
+  @move_cooldown_ms 150
 
   # Client API
 
@@ -89,10 +91,11 @@ defmodule Gameserver.WorldServer do
   Moves a player one step in the given direction.
 
   Returns `{:ok, new_position}` on success, `{:error, :collision}` if the
-  destination is blocked, or `{:error, :not_found}` if the player is not in the world.
+  destination is blocked, `{:error, :cooldown}` if the player moved too recently,
+  or `{:error, :not_found}` if the player is not in the world.
   """
   @spec move(Ecto.UUID.t(), GameMap.direction(), GenServer.server()) ::
-          {:ok, GameMap.coord()} | {:error, :not_found | :collision}
+          {:ok, GameMap.coord()} | {:error, :not_found | :collision | :cooldown}
   def move(user_id, direction, server \\ __MODULE__) when is_binary(user_id) do
     GenServer.call(server, {:move, user_id, direction})
   end
@@ -112,6 +115,10 @@ defmodule Gameserver.WorldServer do
   """
   @spec movement_topic() :: String.t()
   def movement_topic, do: @movement_topic
+
+  @doc "Returns the movement cooldown duration in milliseconds."
+  @spec move_cooldown_ms() :: pos_integer()
+  def move_cooldown_ms, do: @move_cooldown_ms
 
   # Server callbacks
 
@@ -219,23 +226,27 @@ defmodule Gameserver.WorldServer do
         _from,
         %__MODULE__{players: players, map: map} = state
       ) do
-    case Map.get(players, user_id) do
-      nil ->
-        {:reply, {:error, :not_found}, state}
-
-      %Player{} = player ->
-        case apply_move_and_notify(player, user_id, direction, map) do
-          {:ok, %Player{position: destination} = updated_player} ->
-            {:reply, {:ok, destination},
-             %{state | players: Map.put(players, user_id, updated_player)}}
-
-          {:error, :collision} ->
-            {:reply, {:error, :collision}, state}
-        end
+    with {:ok, player} <- get_player(players, user_id),
+         :ok <- Cooldowns.check(player.cooldowns, :move),
+         {:ok, updated_player} <- apply_move_and_notify(player, direction, map) do
+      %Player{position: destination} = updated_player
+      new_state = %{state | players: Map.put(players, user_id, updated_player)}
+      {:reply, {:ok, destination}, new_state}
+    else
+      {:error, reason} -> {:reply, {:error, reason}, state}
     end
   end
 
   # Private helpers
+
+  @spec get_player(%{Ecto.UUID.t() => Player.t()}, Ecto.UUID.t()) ::
+          {:ok, Player.t()} | {:error, :not_found}
+  defp get_player(players, user_id) do
+    case Map.get(players, user_id) do
+      nil -> {:error, :not_found}
+      %Player{} = player -> {:ok, player}
+    end
+  end
 
   @spec player_to_tuple(Player.t()) :: {Ecto.UUID.t(), User.username()}
   defp player_to_tuple(%Player{user: %User{id: id, username: username}}) do
@@ -251,16 +262,17 @@ defmodule Gameserver.WorldServer do
     {id, username, position}
   end
 
-  @spec apply_move_and_notify(Player.t(), Ecto.UUID.t(), GameMap.direction(), GameMap.t()) ::
+  @spec apply_move_and_notify(Player.t(), GameMap.direction(), GameMap.t()) ::
           {:ok, Player.t()} | {:error, :collision}
-  defp apply_move_and_notify(%Player{position: position} = player, user_id, direction, map) do
+  defp apply_move_and_notify(%Player{position: position} = player, direction, map) do
     destination = GameMap.interpolate(position, direction)
 
     if GameMap.collision?(map, position, destination) do
       {:error, :collision}
     else
-      broadcast_movement({:player_moved, user_id, destination})
-      {:ok, %{player | position: destination}}
+      broadcast_movement({:player_moved, Player.id(player), destination})
+      updated_cooldowns = Cooldowns.start(player.cooldowns, :move, @move_cooldown_ms)
+      {:ok, %{player | position: destination, cooldowns: updated_cooldowns}}
     end
   end
 

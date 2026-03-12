@@ -13,6 +13,7 @@ defmodule Gameserver.PlayerTest do
 
       assert player.user == user
       assert player.position == position
+      assert %Gameserver.Cooldowns{} = player.cooldowns
     end
   end
 

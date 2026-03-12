@@ -185,6 +185,23 @@ defmodule Gameserver.WorldServerTest do
       assert {:error, :not_found} = WorldServer.move(fake_id, :east, server)
     end
 
+    test "returns error when on cooldown", %{server: server} do
+      {:ok, user} = User.new("alice")
+      {:ok, _spawn} = WorldServer.join(user, server)
+
+      {:ok, _pos} = WorldServer.move(user.id, :east, server)
+      assert {:error, :cooldown} = WorldServer.move(user.id, :east, server)
+    end
+
+    test "allows movement after cooldown expires", %{server: server} do
+      {:ok, user} = User.new("alice")
+      {:ok, _spawn} = WorldServer.join(user, server)
+
+      {:ok, _pos} = WorldServer.move(user.id, :east, server)
+      Process.sleep(WorldServer.move_cooldown_ms() + 1)
+      assert {:ok, _pos} = WorldServer.move(user.id, :east, server)
+    end
+
     test "position unchanged after collision", %{server: server} do
       {:ok, user} = User.new("alice")
       {:ok, spawn} = WorldServer.join(user, server)
@@ -268,6 +285,18 @@ defmodule Gameserver.WorldServerTest do
 
       {:error, :collision} = WorldServer.move(alice.id, :north, server)
 
+      refute_receive {:player_moved, _, _}
+    end
+
+    test "does not broadcast on cooldown", %{server: server} do
+      Phoenix.PubSub.subscribe(Gameserver.PubSub, WorldServer.movement_topic())
+      {:ok, alice} = User.new("alice")
+      {:ok, _position} = WorldServer.join(alice, server)
+
+      {:ok, _pos} = WorldServer.move(alice.id, :east, server)
+      assert_receive {:player_moved, _, _}
+
+      {:error, :cooldown} = WorldServer.move(alice.id, :east, server)
       refute_receive {:player_moved, _, _}
     end
   end
