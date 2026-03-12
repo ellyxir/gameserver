@@ -4,6 +4,8 @@ defmodule GameserverWeb.WorldLiveTest do
 
   import Phoenix.LiveViewTest
 
+  import ExUnit.CaptureLog
+
   alias Gameserver.User
   alias Gameserver.WorldServer
 
@@ -120,6 +122,48 @@ defmodule GameserverWeb.WorldLiveTest do
       # Wait for pubsub update
       html = render(view)
       refute html =~ "leavinguser"
+    end
+  end
+
+  # TODO(@ellyxir): once we have movement being handled we should no
+  # longer need to test against logs, we can test against things
+  # like the player location. this test is just for initial setup
+  describe "player-move event" do
+    setup do
+      previous_level = Logger.level()
+      Logger.configure(level: :debug)
+      on_exit(fn -> Logger.configure(level: previous_level) end)
+    end
+
+    @tag capture_log: true
+    test "logs valid direction", %{conn: conn} do
+      {:ok, user} = User.new("mover")
+      {:ok, _position} = WorldServer.join(user)
+      {:ok, view, _html} = live(conn, ~p"/world?user_id=#{user.id}")
+
+      log =
+        capture_log(fn ->
+          render_click(view, "player-move", %{"direction" => "north"})
+        end)
+
+      assert log =~ "north"
+      assert log =~ user.id
+    end
+
+    @tag capture_log: true
+    test "logs error for invalid direction", %{conn: conn} do
+      {:ok, user} = User.new("badmover")
+      {:ok, _position} = WorldServer.join(user)
+      {:ok, view, _html} = live(conn, ~p"/world?user_id=#{user.id}")
+
+      log =
+        capture_log(fn ->
+          render_click(view, "player-move", %{"direction" => "northwest"})
+        end)
+
+      assert log =~ "invalid player-move"
+      assert log =~ "northwest"
+      assert log =~ user.id
     end
   end
 end

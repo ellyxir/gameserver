@@ -6,6 +6,8 @@ defmodule GameserverWeb.WorldLive do
 
   use GameserverWeb, :live_view
 
+  require Logger
+
   alias Gameserver.Map, as: GameMap
   alias Gameserver.WorldServer
 
@@ -42,6 +44,20 @@ defmodule GameserverWeb.WorldLive do
       :error ->
         {:ok, push_navigate(socket, to: ~p"/game")}
     end
+  end
+
+  @valid_directions ~w(north south east west)
+
+  @impl Phoenix.LiveView
+  def handle_event("player-move", %{"direction" => direction}, socket)
+      when direction in @valid_directions do
+    Logger.debug("player-move user=#{socket.assigns.user_id} direction=#{direction}")
+    {:noreply, socket}
+  end
+
+  def handle_event("player-move", params, socket) do
+    Logger.error("invalid player-move user=#{socket.assigns.user_id} params=#{inspect(params)}")
+    {:noreply, socket}
   end
 
   @impl Phoenix.LiveView
