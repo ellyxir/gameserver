@@ -13,7 +13,7 @@ defmodule Gameserver.WorldServer do
   defstruct entities: %{}, map: nil
 
   @typedoc "Error reasons for join operations"
-  @type join_error() :: :already_joined | :username_not_available | :no_spawn_point
+  @type join_error() :: :already_joined | :username_not_available | :no_spawn_point | :collision
 
   @presence_topic "world:presence"
   @movement_topic "world:movement"
@@ -48,7 +48,11 @@ defmodule Gameserver.WorldServer do
   Adds an entity directly to the world and assigns a spawn position.
 
   For `:user` entities, validates username uniqueness and duplicate joins.
-  For `:mob` entities, only checks for duplicate ID.
+  Pre-set positions on user entities are ignored — users always get the spawn point.
+
+  For `:mob` entities, only checks for duplicate ID. If the mob has a pre-set
+  `pos`, it is validated (must be a walkable, unoccupied tile). Mobs without
+  a pre-set position get the default spawn point.
   """
   @spec join_entity(Entity.t(), GenServer.server()) ::
           {:ok, GameMap.coord()} | {:error, join_error()}
@@ -157,7 +161,7 @@ defmodule Gameserver.WorldServer do
       ) do
     with :ok <- check_not_already_joined(entities, id),
          :ok <- check_user_constraints(entities, entity),
-         {:ok, pos} <- GameMap.get_spawn_point(map) do
+         {:ok, pos} <- resolve_spawn_position(entity, map, entities) do
       entity = %{entity | pos: pos}
       broadcast_presence({:entity_joined, entity})
       {:reply, {:ok, pos}, %{state | entities: Map.put(entities, id, entity)}}
@@ -270,6 +274,23 @@ defmodule Gameserver.WorldServer do
   end
 
   defp check_user_constraints(_entities, %Entity{type: :mob}), do: :ok
+
+  @spec resolve_spawn_position(Entity.t(), GameMap.t(), %{Ecto.UUID.t() => Entity.t()}) ::
+          {:ok, GameMap.coord()} | {:error, :no_spawn_point | :collision}
+  defp resolve_spawn_position(%Entity{type: :mob, pos: pos}, map, entities) when pos != nil do
+    cond do
+      GameMap.collision?(map, pos) -> {:error, :collision}
+      tile_occupied?(entities, pos) -> {:error, :collision}
+      true -> {:ok, pos}
+    end
+  end
+
+  defp resolve_spawn_position(_entity, map, _entities), do: GameMap.get_spawn_point(map)
+
+  @spec tile_occupied?(%{Ecto.UUID.t() => Entity.t()}, GameMap.coord()) :: boolean()
+  defp tile_occupied?(entities, pos) do
+    Enum.any?(entities, fn {_id, entity} -> entity.pos == pos end)
+  end
 
   @spec get_entity(%{Ecto.UUID.t() => Entity.t()}, Ecto.UUID.t()) ::
           {:ok, Entity.t()} | {:error, :not_found}

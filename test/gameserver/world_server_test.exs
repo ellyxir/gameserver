@@ -395,4 +395,53 @@ defmodule Gameserver.WorldServerTest do
       assert {:ok, {2, 1}} = WorldServer.move(mob.id, :east, server)
     end
   end
+
+  describe "join_entity/2 with pre-set position" do
+    test "mob with pre-set pos spawns at that pos", %{server: server} do
+      mob = Entity.new(name: "goblin", type: :mob, pos: {3, 2})
+
+      assert {:ok, {3, 2}} = WorldServer.join_entity(mob, server)
+      assert {:ok, {3, 2}} = WorldServer.get_position(mob.id, server)
+    end
+
+    test "mob with pos on a wall is rejected", %{server: server} do
+      mob = Entity.new(name: "goblin", type: :mob, pos: {0, 0})
+
+      assert {:error, :collision} = WorldServer.join_entity(mob, server)
+    end
+
+    test "mob rejected when tile is occupied by another entity", %{server: server} do
+      mob1 = Entity.new(name: "goblin", type: :mob, pos: {3, 2})
+      mob2 = Entity.new(name: "spider", type: :mob, pos: {3, 2})
+
+      {:ok, _pos} = WorldServer.join_entity(mob1, server)
+      assert {:error, :collision} = WorldServer.join_entity(mob2, server)
+    end
+
+    test "mob without pos gets spawn point", %{server: server} do
+      mob = Entity.new(name: "goblin", type: :mob)
+
+      assert {:ok, {1, 1}} = WorldServer.join_entity(mob, server)
+    end
+
+    test "mob with out-of-bounds pos is rejected", %{server: server} do
+      mob = Entity.new(name: "goblin", type: :mob, pos: {999, 999})
+
+      assert {:error, :collision} = WorldServer.join_entity(mob, server)
+    end
+
+    test "mob rejected when tile is occupied by a user", %{server: server} do
+      {:ok, user} = User.new("alice")
+      {:ok, spawn} = WorldServer.join_user(user, server)
+      mob = Entity.new(name: "goblin", type: :mob, pos: spawn)
+
+      assert {:error, :collision} = WorldServer.join_entity(mob, server)
+    end
+
+    test "user with pre-set pos still gets spawn point", %{server: server} do
+      user_entity = Entity.new(name: "alice", type: :user, pos: {5, 10})
+
+      assert {:ok, {1, 1}} = WorldServer.join_entity(user_entity, server)
+    end
+  end
 end
