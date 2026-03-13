@@ -30,7 +30,7 @@ defmodule GameserverWeb.WorldLive do
         all_players = WorldServer.players()
 
         player_positions =
-          Map.new(all_players, fn {id, uname, pos} -> {id, {uname, pos}} end)
+          Map.new(all_players, fn {%User{id: id, username: uname}, pos} -> {id, {uname, pos}} end)
 
         if Map.has_key?(player_positions, user_id) do
           map_cells = WorldServer.get_map() |> GameMap.to_cells()

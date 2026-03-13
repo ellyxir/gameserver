@@ -28,7 +28,7 @@ defmodule Gameserver.Entity do
   @doc """
   Creates a new entity.
 
-  Requires `:name`, `:type`, and `:pos`. Generates a UUID if `:id` is not provided.
+  Requires `:name` and `:type`. Generates a UUID if `:id` is not provided.
   Defaults `:stats` and `:cooldowns` to their empty structs.
   """
   @spec new(keyword()) :: t()
