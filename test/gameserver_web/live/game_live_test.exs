@@ -10,6 +10,11 @@ defmodule GameserverWeb.GameLiveTest do
       assert html =~ "Username"
       assert has_element?(view, "input[name='login_form[username]']")
     end
+
+    test "wraps content with Layouts.app", %{conn: conn} do
+      {:ok, _view, html} = live(conn, ~p"/game")
+      assert html =~ "<header class=\"navbar"
+    end
   end
 
   describe "validate" do

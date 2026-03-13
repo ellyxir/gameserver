@@ -28,6 +28,15 @@ defmodule GameserverWeb.WorldLiveTest do
       assert html =~ "Online Users"
       assert html =~ "validuser"
     end
+
+    test "wraps content with Layouts.app", %{conn: conn} do
+      {:ok, user} = User.new("layoutuser")
+      {:ok, _position} = WorldServer.join(user)
+
+      {:ok, _view, html} = live(conn, ~p"/world?user_id=#{user.id}")
+
+      assert html =~ "<header class=\"navbar"
+    end
   end
 
   describe "online users list" do
