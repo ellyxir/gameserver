@@ -117,6 +117,7 @@ defmodule GameserverWeb.WorldLive do
       player_positions = put_position(socket.assigns.player_positions, id, pos)
       {:noreply, assign(socket, player_positions: player_positions)}
     else
+      Logger.warning("unhandled entity_moved for id #{id}")
       {:noreply, socket}
     end
   end

@@ -202,7 +202,7 @@ defmodule Gameserver.Map do
   @doc """
   Returns the spawn point for the map.
 
-  Player spawns at the :upstairs tile. We return the first one we find.
+  Spawn point is the first :upstairs tile found on the map.
   """
   @spec get_spawn_point(t()) :: {:ok, coord()} | {:error, :no_spawn_point}
   def get_spawn_point(%__MODULE__{tiles: tiles}) do

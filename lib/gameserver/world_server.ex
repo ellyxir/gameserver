@@ -292,7 +292,8 @@ defmodule Gameserver.WorldServer do
 
   @spec entity_to_user_pos(Entity.t()) :: {User.t(), GameMap.coord()}
   defp entity_to_user_pos(%Entity{id: id, name: name, pos: pos}) do
-    {%User{id: id, username: name}, pos}
+    {:ok, user} = User.new(id: id, username: name)
+    {user, pos}
   end
 
   @spec apply_move_and_notify(Entity.t(), GameMap.direction(), GameMap.t()) ::
