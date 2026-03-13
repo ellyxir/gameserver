@@ -163,6 +163,45 @@ defmodule Gameserver.WorldServerTest do
     end
   end
 
+  describe "mobs/1" do
+    test "returns empty list when no mobs", %{server: server} do
+      assert [] = WorldServer.mobs(server)
+    end
+
+    test "returns all mobs with positions", %{server: server} do
+      goblin = Entity.new(name: "goblin", type: :mob, pos: {3, 2})
+      spider = Entity.new(name: "spider", type: :mob, pos: {11, 2})
+      {:ok, _pos} = WorldServer.join_entity(goblin, server)
+      {:ok, _pos} = WorldServer.join_entity(spider, server)
+
+      result = WorldServer.mobs(server)
+      ids = Enum.map(result, fn {entity, _pos} -> entity.id end)
+
+      assert length(result) == 2
+      assert goblin.id in ids
+      assert spider.id in ids
+    end
+
+    test "does not include users", %{server: server} do
+      {:ok, user} = User.new("alice")
+      {:ok, _pos} = WorldServer.join_user(user, server)
+      mob = Entity.new(name: "goblin", type: :mob, pos: {3, 2})
+      {:ok, _pos} = WorldServer.join_entity(mob, server)
+
+      result = WorldServer.mobs(server)
+
+      assert [{entity, {3, 2}}] = result
+      assert entity.id == mob.id
+    end
+
+    test "returns empty list when only users exist", %{server: server} do
+      {:ok, user} = User.new("alice")
+      {:ok, _pos} = WorldServer.join_user(user, server)
+
+      assert [] = WorldServer.mobs(server)
+    end
+  end
+
   describe "get_map/1" do
     test "returns the map", %{server: server} do
       assert %Gameserver.Map{} = WorldServer.get_map(server)

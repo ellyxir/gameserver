@@ -102,6 +102,14 @@ defmodule Gameserver.WorldServer do
   end
 
   @doc """
+  Returns all mob-type entities as `{entity, position}` tuples.
+  """
+  @spec mobs(GenServer.server()) :: [{Entity.t(), GameMap.coord()}]
+  def mobs(server \\ __MODULE__) do
+    GenServer.call(server, :mobs)
+  end
+
+  @doc """
   Returns the position of an entity by id.
   """
   @spec get_position(Ecto.UUID.t(), GenServer.server()) ::
@@ -192,7 +200,7 @@ defmodule Gameserver.WorldServer do
   def handle_call(:who, _from, %__MODULE__{entities: entities} = state) do
     result =
       entities
-      |> users()
+      |> users_from_entities()
       |> Enum.map(&entity_to_tuple/1)
 
     {:reply, result, state}
@@ -202,8 +210,18 @@ defmodule Gameserver.WorldServer do
   def handle_call(:players, _from, %__MODULE__{entities: entities} = state) do
     result =
       entities
-      |> users()
+      |> users_from_entities()
       |> Enum.map(&entity_to_user_pos/1)
+
+    {:reply, result, state}
+  end
+
+  @impl GenServer
+  def handle_call(:mobs, _from, %__MODULE__{entities: entities} = state) do
+    result =
+      entities
+      |> mobs_from_entities()
+      |> Enum.map(&entity_to_mob_pos/1)
 
     {:reply, result, state}
   end
@@ -325,11 +343,18 @@ defmodule Gameserver.WorldServer do
   defp blocks?(%Entity{type: :user}, %Entity{type: :mob}), do: true
   defp blocks?(%Entity{type: :user}, %Entity{type: :user}), do: false
 
-  @spec users(%{Ecto.UUID.t() => Entity.t()}) :: [Entity.t()]
-  defp users(entities) do
+  @spec users_from_entities(%{Ecto.UUID.t() => Entity.t()}) :: [Entity.t()]
+  defp users_from_entities(entities) do
     entities
     |> Map.values()
     |> Enum.filter(&(&1.type == :user))
+  end
+
+  @spec mobs_from_entities(%{Ecto.UUID.t() => Entity.t()}) :: [Entity.t()]
+  defp mobs_from_entities(entities) do
+    entities
+    |> Map.values()
+    |> Enum.filter(&(&1.type == :mob))
   end
 
   @spec entity_to_tuple(Entity.t()) :: {Ecto.UUID.t(), String.t()}
@@ -340,6 +365,9 @@ defmodule Gameserver.WorldServer do
     {:ok, user} = User.new(id: id, username: name)
     {user, pos}
   end
+
+  @spec entity_to_mob_pos(Entity.t()) :: {Entity.t(), GameMap.coord()}
+  defp entity_to_mob_pos(%Entity{pos: pos} = entity), do: {entity, pos}
 
   @spec apply_move_and_notify(Entity.t(), GameMap.direction(), t()) ::
           {:ok, Entity.t()} | {:error, :collision}
