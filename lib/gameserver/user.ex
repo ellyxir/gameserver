@@ -1,6 +1,6 @@
 defmodule Gameserver.User do
   @moduledoc """
-  Represents a user account. See `Gameserver.Player` for the in-game representation.
+  Represents a user account. See `Gameserver.Entity` for the in-game representation.
   """
 
   import Ecto.Changeset
@@ -24,9 +24,16 @@ defmodule Gameserver.User do
   @type user_error() :: :too_long | :too_short | :required | :invalid_format
 
   @doc """
-  create a new user
+  Creates a new user.
+
+  Accepts a username string (validates and generates a UUID) or a keyword list
+  of fields for direct construction.
   """
-  @spec new(username()) :: {:ok, t()} | {:error, user_error()}
+  @spec new(username() | keyword()) :: {:ok, t()} | {:error, user_error()}
+  def new(opts) when is_list(opts) do
+    {:ok, struct!(__MODULE__, opts)}
+  end
+
   def new(username) when is_binary(username) do
     changeset = changeset(%{username: username})
 

@@ -5,7 +5,22 @@ defmodule Gameserver.UserTest do
 
   defp valid_uuid?(uuid), do: match?({:ok, _}, Ecto.UUID.cast(uuid))
 
-  describe "new/1" do
+  describe "new/1 with keyword list" do
+    test "creates user from id and username" do
+      id = Ecto.UUID.generate()
+      assert {:ok, user} = User.new(id: id, username: "alice")
+      assert user.id == id
+      assert user.username == "alice"
+    end
+
+    test "raises on unknown keys" do
+      assert_raise KeyError, fn ->
+        User.new(id: Ecto.UUID.generate(), username: "alice", email: "a@b.com")
+      end
+    end
+  end
+
+  describe "new/1 with username string" do
     test "creates user with valid username" do
       assert {:ok, %User{username: "alice", id: id}} = User.new("alice")
       assert valid_uuid?(id)

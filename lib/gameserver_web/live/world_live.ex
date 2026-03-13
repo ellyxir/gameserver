@@ -9,6 +9,7 @@ defmodule GameserverWeb.WorldLive do
 
   require Logger
 
+  alias Gameserver.Entity
   alias Gameserver.Map, as: GameMap
   alias Gameserver.User
   alias Gameserver.WorldServer
@@ -30,7 +31,7 @@ defmodule GameserverWeb.WorldLive do
         all_players = WorldServer.players()
 
         player_positions =
-          Map.new(all_players, fn {id, uname, pos} -> {id, {uname, pos}} end)
+          Map.new(all_players, fn {%User{id: id, username: uname}, pos} -> {id, {uname, pos}} end)
 
         if Map.has_key?(player_positions, user_id) do
           map_cells = WorldServer.get_map() |> GameMap.to_cells()
@@ -99,35 +100,33 @@ defmodule GameserverWeb.WorldLive do
   end
 
   @impl Phoenix.LiveView
-  def handle_info({:user_joined, user}, socket) do
-    case WorldServer.get_position(user.id) do
-      {:ok, position} ->
-        player_positions =
-          Map.put(socket.assigns.player_positions, user.id, {user.username, position})
+  def handle_info({:entity_joined, %Entity{type: :user} = entity}, socket) do
+    player_positions =
+      Map.put(socket.assigns.player_positions, entity.id, {entity.name, entity.pos})
 
-        {:noreply, assign(socket, player_positions: player_positions)}
-
-      {:error, :not_found} ->
-        Logger.warning("user_joined but no position found for #{user.id}")
-        {:noreply, socket}
-    end
+    {:noreply, assign(socket, player_positions: player_positions)}
   end
 
-  def handle_info({:player_moved, user_id, position}, socket) do
-    if Map.has_key?(socket.assigns.player_positions, user_id) do
-      player_positions = put_position(socket.assigns.player_positions, user_id, position)
+  def handle_info({:entity_joined, %Entity{type: type}}, socket) do
+    Logger.warning("unhandled entity_joined for type #{type}")
+    {:noreply, socket}
+  end
+
+  def handle_info({:entity_moved, id, pos}, socket) do
+    if Map.has_key?(socket.assigns.player_positions, id) do
+      player_positions = put_position(socket.assigns.player_positions, id, pos)
       {:noreply, assign(socket, player_positions: player_positions)}
     else
-      Logger.warning("received player_moved for unknown player #{user_id}")
+      Logger.warning("unhandled entity_moved for id #{id}")
       {:noreply, socket}
     end
   end
 
-  def handle_info({:user_left, user}, socket) do
-    if user.id == socket.assigns.user_id do
+  def handle_info({:entity_left, id}, socket) do
+    if id == socket.assigns.user_id do
       {:noreply, push_navigate(socket, to: ~p"/game")}
     else
-      player_positions = Map.delete(socket.assigns.player_positions, user.id)
+      player_positions = Map.delete(socket.assigns.player_positions, id)
       {:noreply, assign(socket, player_positions: player_positions)}
     end
   end

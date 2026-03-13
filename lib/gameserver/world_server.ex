@@ -1,16 +1,16 @@
 defmodule Gameserver.WorldServer do
   @moduledoc """
-  A named GenServer that tracks user presence and location in the world.
+  A named GenServer that tracks entity presence and location in the world.
   """
 
   use GenServer
 
   alias Gameserver.Cooldowns
+  alias Gameserver.Entity
   alias Gameserver.Map, as: GameMap
-  alias Gameserver.Player
   alias Gameserver.User
 
-  defstruct players: %{}, map: nil
+  defstruct entities: %{}, map: nil
 
   @typedoc "Error reasons for join operations"
   @type join_error() :: :already_joined | :username_not_available | :no_spawn_point
@@ -32,23 +32,36 @@ defmodule Gameserver.WorldServer do
   end
 
   @doc """
-  Adds a user to the world and assigns them a spawn position.
+  Adds a user to the world by wrapping them in an entity and assigns them a spawn position.
 
   Returns `{:ok, position}` on success with the spawn coordinates,
   `{:error, :already_joined}` if the user ID is already in the world,
   or `{:error, :username_not_available}` if another user has the same username.
   """
-  @spec join(User.t(), GenServer.server()) :: {:ok, GameMap.coord()} | {:error, join_error()}
-  def join(%User{} = user, server \\ __MODULE__) do
-    GenServer.call(server, {:join, user})
+  @spec join_user(User.t(), GenServer.server()) :: {:ok, GameMap.coord()} | {:error, join_error()}
+  def join_user(%User{} = user, server \\ __MODULE__) do
+    entity = Entity.new(id: user.id, name: user.username, type: :user)
+    GenServer.call(server, {:join_entity, entity})
   end
 
   @doc """
-  Removes a user from the world by user_id.
+  Adds an entity directly to the world and assigns a spawn position.
+
+  For `:user` entities, validates username uniqueness and duplicate joins.
+  For `:mob` entities, only checks for duplicate ID.
+  """
+  @spec join_entity(Entity.t(), GenServer.server()) ::
+          {:ok, GameMap.coord()} | {:error, join_error()}
+  def join_entity(%Entity{} = entity, server \\ __MODULE__) do
+    GenServer.call(server, {:join_entity, entity})
+  end
+
+  @doc """
+  Removes an entity from the world by id.
   """
   @spec leave(Ecto.UUID.t(), GenServer.server()) :: :ok | {:error, :not_found}
-  def leave(user_id, server \\ __MODULE__) when is_binary(user_id) do
-    GenServer.call(server, {:leave, user_id})
+  def leave(id, server \\ __MODULE__) when is_binary(id) do
+    GenServer.call(server, {:leave, id})
   end
 
   @doc """
@@ -66,44 +79,45 @@ defmodule Gameserver.WorldServer do
   @spec who(Ecto.UUID.t() | [Ecto.UUID.t()], GenServer.server()) :: [
           {Ecto.UUID.t(), User.username()}
         ]
-  def who(id_or_ids, server) do
+  def who(id_or_ids, server) when is_binary(id_or_ids) or is_list(id_or_ids) do
     GenServer.call(server, {:who, id_or_ids})
   end
 
   @doc """
-  Returns all players with their positions as `{user_id, username, position}` tuples.
+  Returns all user-type entities as `{user, position}` tuples.
   """
-  @spec players(GenServer.server()) :: [{Ecto.UUID.t(), User.username(), GameMap.coord()}]
+  @spec players(GenServer.server()) :: [{User.t(), GameMap.coord()}]
   def players(server \\ __MODULE__) do
     GenServer.call(server, :players)
   end
 
   @doc """
-  Returns the position of a player by user_id.
+  Returns the position of an entity by id.
   """
   @spec get_position(Ecto.UUID.t(), GenServer.server()) ::
           {:ok, GameMap.coord()} | {:error, :not_found}
-  def get_position(user_id, server \\ __MODULE__) when is_binary(user_id) do
-    GenServer.call(server, {:get_position, user_id})
+  def get_position(id, server \\ __MODULE__) when is_binary(id) do
+    GenServer.call(server, {:get_position, id})
   end
 
   @doc """
-  Moves a player one step in the given direction.
+  Moves an entity one step in the given direction.
 
-  Returns `{:ok, new_position}` on success, `{:error, :collision}` if the
-  destination is blocked, `{:error, :cooldown}` if the player moved too recently,
-  or `{:error, :not_found}` if the player is not in the world.
+  Returns `{:ok, new_position}` on success,
+    `{:error, :collision}` if the destination is blocked,
+    `{:error, :cooldown}` if the entity moved too recently,
+    `{:error, :not_found}` if the entity is not in the world.
   """
   @spec move(Ecto.UUID.t(), GameMap.direction(), GenServer.server()) ::
           {:ok, GameMap.coord()} | {:error, :not_found | :collision | :cooldown}
-  def move(user_id, direction, server \\ __MODULE__) when is_binary(user_id) do
-    GenServer.call(server, {:move, user_id, direction})
+  def move(id, direction, server \\ __MODULE__) when is_binary(id) do
+    GenServer.call(server, {:move, id, direction})
   end
 
   @doc """
   Returns the PubSub topic for presence updates.
 
-  Subscribe to receive `{:user_joined, user}` and `{:user_left, user}` messages.
+  Subscribe to receive `{:entity_joined, entity}` and `{:entity_left, id}` messages.
   """
   @spec presence_topic() :: String.t()
   def presence_topic, do: @presence_topic
@@ -111,7 +125,7 @@ defmodule Gameserver.WorldServer do
   @doc """
   Returns the PubSub topic for movement updates.
 
-  Subscribe to receive `{:player_moved, user_id, position}` messages.
+  Subscribe to receive `{:entity_moved, id, position}` messages.
   """
   @spec movement_topic() :: String.t()
   def movement_topic, do: @movement_topic
@@ -137,69 +151,61 @@ defmodule Gameserver.WorldServer do
 
   @impl GenServer
   def handle_call(
-        {:join, %User{id: id, username: username} = user},
+        {:join_entity, %Entity{id: id} = entity},
         _from,
-        %__MODULE__{players: players, map: map} = state
+        %__MODULE__{entities: entities, map: map} = state
       ) do
-    cond do
-      Map.has_key?(players, id) ->
-        {:reply, {:error, :already_joined}, state}
-
-      username_taken?(players, username) ->
-        {:reply, {:error, :username_not_available}, state}
-
-      true ->
-        case GameMap.get_spawn_point(map) do
-          {:ok, position} ->
-            player = Player.new(user, position)
-            broadcast_presence({:user_joined, user})
-            {:reply, {:ok, position}, %{state | players: Map.put(players, id, player)}}
-
-          {:error, :no_spawn_point} ->
-            {:reply, {:error, :no_spawn_point}, state}
-        end
+    with :ok <- check_not_already_joined(entities, id),
+         :ok <- check_user_constraints(entities, entity),
+         {:ok, pos} <- GameMap.get_spawn_point(map) do
+      entity = %{entity | pos: pos}
+      broadcast_presence({:entity_joined, entity})
+      {:reply, {:ok, pos}, %{state | entities: Map.put(entities, id, entity)}}
+    else
+      {:error, reason} -> {:reply, {:error, reason}, state}
     end
   end
 
   @impl GenServer
-  def handle_call({:leave, user_id}, _from, %__MODULE__{players: players} = state) do
-    case Map.pop(players, user_id) do
-      {nil, _players} ->
+  def handle_call({:leave, id}, _from, %__MODULE__{entities: entities} = state) do
+    case Map.pop(entities, id) do
+      {nil, _entities} ->
         {:reply, {:error, :not_found}, state}
 
-      {%Player{user: user}, remaining_players} ->
-        broadcast_presence({:user_left, user})
-        {:reply, :ok, %{state | players: remaining_players}}
+      {%Entity{} = entity, remaining} ->
+        broadcast_presence({:entity_left, entity.id})
+        {:reply, :ok, %{state | entities: remaining}}
     end
   end
 
   @impl GenServer
-  def handle_call(:who, _from, %__MODULE__{players: players} = state) do
+  def handle_call(:who, _from, %__MODULE__{entities: entities} = state) do
     result =
-      players
-      |> Map.values()
-      |> Enum.map(&player_to_tuple/1)
+      entities
+      |> users()
+      |> Enum.map(&entity_to_tuple/1)
 
     {:reply, result, state}
   end
 
   @impl GenServer
-  def handle_call(:players, _from, %__MODULE__{players: players} = state) do
+  def handle_call(:players, _from, %__MODULE__{entities: entities} = state) do
     result =
-      players
-      |> Map.values()
-      |> Enum.map(&player_to_tuple_with_position/1)
+      entities
+      |> users()
+      |> Enum.map(&entity_to_user_pos/1)
 
     {:reply, result, state}
   end
 
   @impl GenServer
-  def handle_call({:who, ids}, _from, %__MODULE__{players: players} = state) when is_list(ids) do
+  def handle_call({:who, ids}, _from, %__MODULE__{entities: entities} = state)
+      when is_list(ids) do
     result =
       Enum.flat_map(ids, fn id ->
-        case Map.get(players, id) do
-          nil -> []
-          player -> [player_to_tuple(player)]
+        case Map.get(entities, id) do
+          %Entity{type: :user} = entity -> [entity_to_tuple(entity)]
+          _ -> []
         end
       end)
 
@@ -207,22 +213,22 @@ defmodule Gameserver.WorldServer do
   end
 
   @impl GenServer
-  def handle_call({:who, id}, _from, %__MODULE__{players: players} = state) do
+  def handle_call({:who, id}, _from, %__MODULE__{entities: entities} = state) do
     result =
-      case Map.get(players, id) do
-        nil -> []
-        player -> [player_to_tuple(player)]
+      case Map.get(entities, id) do
+        %Entity{type: :user} = entity -> [entity_to_tuple(entity)]
+        _ -> []
       end
 
     {:reply, result, state}
   end
 
   @impl GenServer
-  def handle_call({:get_position, user_id}, _from, %__MODULE__{players: players} = state) do
+  def handle_call({:get_position, id}, _from, %__MODULE__{entities: entities} = state) do
     result =
-      case Map.get(players, user_id) do
+      case Map.get(entities, id) do
         nil -> {:error, :not_found}
-        %Player{position: position} -> {:ok, position}
+        %Entity{pos: pos} -> {:ok, pos}
       end
 
     {:reply, result, state}
@@ -230,16 +236,15 @@ defmodule Gameserver.WorldServer do
 
   @impl GenServer
   def handle_call(
-        {:move, user_id, direction},
+        {:move, id, direction},
         _from,
-        %__MODULE__{players: players, map: map} = state
+        %__MODULE__{entities: entities, map: map} = state
       ) do
-    with {:ok, player} <- get_player(players, user_id),
-         :ok <- Cooldowns.check(player.cooldowns, :move),
-         {:ok, updated_player} <- apply_move_and_notify(player, direction, map) do
-      %Player{position: destination} = updated_player
-      new_state = %{state | players: Map.put(players, user_id, updated_player)}
-      {:reply, {:ok, destination}, new_state}
+    with {:ok, entity} <- get_entity(entities, id),
+         :ok <- Cooldowns.check(entity.cooldowns, :move),
+         {:ok, updated} <- apply_move_and_notify(entity, direction, map) do
+      new_state = %{state | entities: Map.put(entities, id, updated)}
+      {:reply, {:ok, updated.pos}, new_state}
     else
       {:error, reason} -> {:reply, {:error, reason}, state}
     end
@@ -252,54 +257,70 @@ defmodule Gameserver.WorldServer do
 
   # Private helpers
 
-  @spec get_player(%{Ecto.UUID.t() => Player.t()}, Ecto.UUID.t()) ::
-          {:ok, Player.t()} | {:error, :not_found}
-  defp get_player(players, user_id) do
-    case Map.get(players, user_id) do
+  @spec check_not_already_joined(%{Ecto.UUID.t() => Entity.t()}, Ecto.UUID.t()) ::
+          :ok | {:error, :already_joined}
+  defp check_not_already_joined(entities, id) do
+    if Map.has_key?(entities, id), do: {:error, :already_joined}, else: :ok
+  end
+
+  @spec check_user_constraints(%{Ecto.UUID.t() => Entity.t()}, Entity.t()) ::
+          :ok | {:error, :username_not_available}
+  defp check_user_constraints(entities, %Entity{type: :user, name: name}) do
+    if username_taken?(entities, name), do: {:error, :username_not_available}, else: :ok
+  end
+
+  defp check_user_constraints(_entities, %Entity{type: :mob}), do: :ok
+
+  @spec get_entity(%{Ecto.UUID.t() => Entity.t()}, Ecto.UUID.t()) ::
+          {:ok, Entity.t()} | {:error, :not_found}
+  defp get_entity(entities, id) do
+    case Map.get(entities, id) do
       nil -> {:error, :not_found}
-      %Player{} = player -> {:ok, player}
+      %Entity{} = entity -> {:ok, entity}
     end
   end
 
-  @spec player_to_tuple(Player.t()) :: {Ecto.UUID.t(), User.username()}
-  defp player_to_tuple(%Player{user: %User{id: id, username: username}}) do
-    {id, username}
+  @spec users(%{Ecto.UUID.t() => Entity.t()}) :: [Entity.t()]
+  defp users(entities) do
+    entities
+    |> Map.values()
+    |> Enum.filter(&(&1.type == :user))
   end
 
-  @spec player_to_tuple_with_position(Player.t()) ::
-          {Ecto.UUID.t(), User.username(), GameMap.coord()}
-  defp player_to_tuple_with_position(%Player{
-         user: %User{id: id, username: username},
-         position: position
-       }) do
-    {id, username, position}
+  @spec entity_to_tuple(Entity.t()) :: {Ecto.UUID.t(), String.t()}
+  defp entity_to_tuple(%Entity{id: id, name: name}), do: {id, name}
+
+  @spec entity_to_user_pos(Entity.t()) :: {User.t(), GameMap.coord()}
+  defp entity_to_user_pos(%Entity{id: id, name: name, pos: pos}) do
+    {:ok, user} = User.new(id: id, username: name)
+    {user, pos}
   end
 
-  @spec apply_move_and_notify(Player.t(), GameMap.direction(), GameMap.t()) ::
-          {:ok, Player.t()} | {:error, :collision}
-  defp apply_move_and_notify(%Player{position: position} = player, direction, map) do
-    destination = GameMap.interpolate(position, direction)
+  @spec apply_move_and_notify(Entity.t(), GameMap.direction(), GameMap.t()) ::
+          {:ok, Entity.t()} | {:error, :collision}
+  defp apply_move_and_notify(%Entity{pos: pos} = entity, direction, map) do
+    destination = GameMap.interpolate(pos, direction)
 
-    if GameMap.collision?(map, position, destination) do
+    if GameMap.collision?(map, pos, destination) do
       {:error, :collision}
     else
-      broadcast_movement({:player_moved, Player.id(player), destination})
-      updated_cooldowns = Cooldowns.start(player.cooldowns, :move, @move_cooldown_ms)
-      {:ok, %{player | position: destination, cooldowns: updated_cooldowns}}
+      broadcast_movement({:entity_moved, entity.id, destination})
+      updated_cooldowns = Cooldowns.start(entity.cooldowns, :move, @move_cooldown_ms)
+      {:ok, %{entity | pos: destination, cooldowns: updated_cooldowns}}
     end
   end
 
-  @spec username_taken?(%{Ecto.UUID.t() => Player.t()}, User.username()) :: boolean()
-  defp username_taken?(players, username) do
-    Enum.any?(players, fn {_id, %Player{user: user}} -> user.username == username end)
+  @spec username_taken?(%{Ecto.UUID.t() => Entity.t()}, String.t()) :: boolean()
+  defp username_taken?(entities, name) do
+    Enum.any?(entities, fn {_id, entity} -> entity.type == :user and entity.name == name end)
   end
 
-  @spec broadcast_presence({:user_joined | :user_left, User.t()}) :: :ok
+  @spec broadcast_presence({:entity_joined, Entity.t()} | {:entity_left, Ecto.UUID.t()}) :: :ok
   defp broadcast_presence(message) do
     Phoenix.PubSub.broadcast(Gameserver.PubSub, @presence_topic, message)
   end
 
-  @spec broadcast_movement({:player_moved, Ecto.UUID.t(), GameMap.coord()}) :: :ok
+  @spec broadcast_movement({:entity_moved, Ecto.UUID.t(), GameMap.coord()}) :: :ok
   defp broadcast_movement(message) do
     Phoenix.PubSub.broadcast(Gameserver.PubSub, @movement_topic, message)
   end
