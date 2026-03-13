@@ -175,6 +175,57 @@ defmodule GameserverWeb.WorldLiveTest do
     end
   end
 
+  describe "mob rendering" do
+    test "renders mob on the map", %{conn: conn} do
+      {:ok, user} = User.new("mobviewer")
+      {:ok, _pos} = WorldServer.join_user(user)
+
+      alias Gameserver.Entity
+      mob = Entity.new(name: "goblin", type: :mob, pos: {3, 2})
+      {:ok, _pos} = WorldServer.join_entity(mob)
+
+      {:ok, _view, html} = live(conn, ~p"/world?user_id=#{user.id}")
+
+      # mob rendered as first letter of name in red
+      assert html =~ "text-red-400"
+      assert html =~ "g"
+    end
+
+    test "mob appears when it joins after mount", %{conn: conn} do
+      {:ok, user} = User.new("mobwatcher")
+      {:ok, _pos} = WorldServer.join_user(user)
+
+      {:ok, view, _html} = live(conn, ~p"/world?user_id=#{user.id}")
+
+      alias Gameserver.Entity
+      mob = Entity.new(name: "goblin", type: :mob, pos: {11, 2})
+      {:ok, _pos} = WorldServer.join_entity(mob)
+
+      assert render(view) =~ "text-red-400"
+    end
+
+    test "mob disappears when it leaves", %{conn: conn} do
+      {:ok, user} = User.new("mobleftviewer")
+      {:ok, _pos} = WorldServer.join_user(user)
+
+      alias Gameserver.Entity
+      mob = Entity.new(name: "goblin", type: :mob, pos: {11, 3})
+      {:ok, _pos} = WorldServer.join_entity(mob)
+
+      {:ok, view, _html} = live(conn, ~p"/world?user_id=#{user.id}")
+
+      before_html = render(view)
+      red_count_before = length(String.split(before_html, "text-red-400")) - 1
+
+      WorldServer.leave(mob.id)
+
+      after_html = render(view)
+      red_count_after = length(String.split(after_html, "text-red-400")) - 1
+
+      assert red_count_after < red_count_before
+    end
+  end
+
   describe "keyboard input" do
     test "wasd keys move the player", %{conn: conn} do
       {:ok, user} = User.new("wasduser")

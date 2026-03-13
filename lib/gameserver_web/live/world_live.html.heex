@@ -5,6 +5,7 @@
         <%= for {row, y} <- Enum.with_index(@map_cells) do %>
           <div>
             <%= for {char, x} <- Enum.with_index(row) do %>
+              <% mob_symbol = mob_at(@mob_positions, {x, y}) %>
               <%= cond do %>
                 <% my_position(assigns) == {x, y} -> %>
                   <span
@@ -14,6 +15,15 @@
                     phx-value-y={y}
                   >
                     @
+                  </span>
+                <% mob_symbol != nil -> %>
+                  <span
+                    class="text-red-400 font-bold cursor-pointer"
+                    phx-click="tile-click"
+                    phx-value-x={x}
+                    phx-value-y={y}
+                  >
+                    {mob_symbol}
                   </span>
                 <% players_at(@player_positions, {x, y}) != [] -> %>
                   <span
