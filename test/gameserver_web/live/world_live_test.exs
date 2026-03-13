@@ -115,8 +115,9 @@ defmodule GameserverWeb.WorldLiveTest do
       # Terminate the LiveView (simulates browser tab close)
       GenServer.stop(view.pid)
 
-      # Should broadcast user_left
-      assert_receive {:user_left, ^user}
+      # Should broadcast entity_left
+      assert_receive {:entity_left, id}
+      assert id == user.id
 
       # User should be removed from WorldServer
       assert [] = WorldServer.who(user.id, WorldServer)

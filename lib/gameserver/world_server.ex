@@ -117,7 +117,7 @@ defmodule Gameserver.WorldServer do
   @doc """
   Returns the PubSub topic for presence updates.
 
-  Subscribe to receive `{:user_joined, user}` and `{:user_left, user}` messages.
+  Subscribe to receive `{:entity_joined, entity}` and `{:entity_left, id}` messages.
   """
   @spec presence_topic() :: String.t()
   def presence_topic, do: @presence_topic
@@ -125,7 +125,7 @@ defmodule Gameserver.WorldServer do
   @doc """
   Returns the PubSub topic for movement updates.
 
-  Subscribe to receive `{:player_moved, user_id, position}` messages.
+  Subscribe to receive `{:entity_moved, id, position}` messages.
   """
   @spec movement_topic() :: String.t()
   def movement_topic, do: @movement_topic
@@ -151,7 +151,7 @@ defmodule Gameserver.WorldServer do
 
   @impl GenServer
   def handle_call(
-        {:join_entity, %Entity{id: id, type: type} = entity},
+        {:join_entity, %Entity{id: id} = entity},
         _from,
         %__MODULE__{entities: entities, map: map} = state
       ) do
@@ -159,7 +159,7 @@ defmodule Gameserver.WorldServer do
          :ok <- check_user_constraints(entities, entity),
          {:ok, pos} <- GameMap.get_spawn_point(map) do
       entity = %{entity | pos: pos}
-      broadcast_join(type, entity)
+      broadcast_presence({:entity_joined, entity})
       {:reply, {:ok, pos}, %{state | entities: Map.put(entities, id, entity)}}
     else
       {:error, reason} -> {:reply, {:error, reason}, state}
@@ -173,7 +173,7 @@ defmodule Gameserver.WorldServer do
         {:reply, {:error, :not_found}, state}
 
       {%Entity{} = entity, remaining} ->
-        broadcast_leave(entity.type, entity)
+        broadcast_presence({:entity_left, entity.id})
         {:reply, :ok, %{state | entities: remaining}}
     end
   end
@@ -303,7 +303,7 @@ defmodule Gameserver.WorldServer do
     if GameMap.collision?(map, pos, destination) do
       {:error, :collision}
     else
-      broadcast_movement({:player_moved, entity.id, destination})
+      broadcast_movement({:entity_moved, entity.id, destination})
       updated_cooldowns = Cooldowns.start(entity.cooldowns, :move, @move_cooldown_ms)
       {:ok, %{entity | pos: destination, cooldowns: updated_cooldowns}}
     end
@@ -314,28 +314,12 @@ defmodule Gameserver.WorldServer do
     Enum.any?(entities, fn {_id, entity} -> entity.type == :user and entity.name == name end)
   end
 
-  # TODO(@ellyxir): broadcast User structs for backwards compatibility with WorldLive.
-  # Change these to entity-based messages.
-  @spec broadcast_join(Entity.entity_type(), Entity.t()) :: :ok
-  defp broadcast_join(:user, entity) do
-    broadcast_presence({:user_joined, %User{id: entity.id, username: entity.name}})
-  end
-
-  defp broadcast_join(_type, _entity), do: :ok
-
-  @spec broadcast_leave(Entity.entity_type(), Entity.t()) :: :ok
-  defp broadcast_leave(:user, entity) do
-    broadcast_presence({:user_left, %User{id: entity.id, username: entity.name}})
-  end
-
-  defp broadcast_leave(_type, _entity), do: :ok
-
-  @spec broadcast_presence(term()) :: :ok
+  @spec broadcast_presence({:entity_joined, Entity.t()} | {:entity_left, Ecto.UUID.t()}) :: :ok
   defp broadcast_presence(message) do
     Phoenix.PubSub.broadcast(Gameserver.PubSub, @presence_topic, message)
   end
 
-  @spec broadcast_movement({:player_moved, Ecto.UUID.t(), GameMap.coord()}) :: :ok
+  @spec broadcast_movement({:entity_moved, Ecto.UUID.t(), GameMap.coord()}) :: :ok
   defp broadcast_movement(message) do
     Phoenix.PubSub.broadcast(Gameserver.PubSub, @movement_topic, message)
   end

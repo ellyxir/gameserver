@@ -219,70 +219,72 @@ defmodule Gameserver.WorldServerTest do
   end
 
   describe "pubsub broadcasts" do
-    test "broadcasts user_joined on successful join", %{server: server} do
-      Phoenix.PubSub.subscribe(Gameserver.PubSub, "world:presence")
+    test "broadcasts entity_joined on successful join", %{server: server} do
+      Phoenix.PubSub.subscribe(Gameserver.PubSub, WorldServer.presence_topic())
       {:ok, alice} = User.new("alice")
 
-      {:ok, _position} = WorldServer.join_user(alice, server)
+      {:ok, pos} = WorldServer.join_user(alice, server)
 
-      assert_receive {:user_joined, ^alice}
+      assert_receive {:entity_joined, entity}
+      assert entity.id == alice.id
+      assert entity.name == "alice"
+      assert entity.pos == pos
     end
 
     test "does not broadcast on failed join", %{server: server} do
-      Phoenix.PubSub.subscribe(Gameserver.PubSub, "world:presence")
+      Phoenix.PubSub.subscribe(Gameserver.PubSub, WorldServer.presence_topic())
       {:ok, alice} = User.new("alice")
       {:ok, _position} = WorldServer.join_user(alice, server)
 
-      # Clear the first message
-      assert_receive {:user_joined, ^alice}
+      assert_receive {:entity_joined, _}
 
-      # Try to join again - should fail
       {:error, :already_joined} = WorldServer.join_user(alice, server)
 
-      refute_receive {:user_joined, _}
+      refute_receive {:entity_joined, _}
     end
 
     test "does not broadcast on username collision", %{server: server} do
-      Phoenix.PubSub.subscribe(Gameserver.PubSub, "world:presence")
+      Phoenix.PubSub.subscribe(Gameserver.PubSub, WorldServer.presence_topic())
       {:ok, alice1} = User.new("alice")
       {:ok, alice2} = User.new("alice")
 
       {:ok, _position} = WorldServer.join_user(alice1, server)
-      assert_receive {:user_joined, ^alice1}
+      assert_receive {:entity_joined, _}
 
       {:error, :username_not_available} = WorldServer.join_user(alice2, server)
-      refute_receive {:user_joined, _}
+      refute_receive {:entity_joined, _}
     end
 
-    test "broadcasts user_left on successful leave", %{server: server} do
-      Phoenix.PubSub.subscribe(Gameserver.PubSub, "world:presence")
+    test "broadcasts entity_left on successful leave", %{server: server} do
+      Phoenix.PubSub.subscribe(Gameserver.PubSub, WorldServer.presence_topic())
       {:ok, alice} = User.new("alice")
       {:ok, _position} = WorldServer.join_user(alice, server)
-      assert_receive {:user_joined, ^alice}
+      assert_receive {:entity_joined, _}
 
       :ok = WorldServer.leave(alice.id, server)
 
-      assert_receive {:user_left, ^alice}
+      assert_receive {:entity_left, id}
+      assert id == alice.id
     end
 
     test "does not broadcast on failed leave", %{server: server} do
-      Phoenix.PubSub.subscribe(Gameserver.PubSub, "world:presence")
+      Phoenix.PubSub.subscribe(Gameserver.PubSub, WorldServer.presence_topic())
       fake_id = Ecto.UUID.generate()
 
       {:error, :not_found} = WorldServer.leave(fake_id, server)
 
-      refute_receive {:user_left, _}
+      refute_receive {:entity_left, _}
     end
 
-    test "broadcasts player_moved on successful move", %{server: server} do
+    test "broadcasts entity_moved on successful move", %{server: server} do
       Phoenix.PubSub.subscribe(Gameserver.PubSub, WorldServer.movement_topic())
       {:ok, alice} = User.new("alice")
       {:ok, _position} = WorldServer.join_user(alice, server)
 
       {:ok, new_pos} = WorldServer.move(alice.id, :east, server)
 
-      assert_receive {:player_moved, alice_id, ^new_pos}
-      assert alice_id == alice.id
+      assert_receive {:entity_moved, id, ^new_pos}
+      assert id == alice.id
     end
 
     test "does not broadcast on collision", %{server: server} do
@@ -292,7 +294,7 @@ defmodule Gameserver.WorldServerTest do
 
       {:error, :collision} = WorldServer.move(alice.id, :north, server)
 
-      refute_receive {:player_moved, _, _}
+      refute_receive {:entity_moved, _, _}
     end
 
     test "does not broadcast on cooldown", %{server: server} do
@@ -301,10 +303,10 @@ defmodule Gameserver.WorldServerTest do
       {:ok, _position} = WorldServer.join_user(alice, server)
 
       {:ok, _pos} = WorldServer.move(alice.id, :east, server)
-      assert_receive {:player_moved, _, _}
+      assert_receive {:entity_moved, _, _}
 
       {:error, :cooldown} = WorldServer.move(alice.id, :east, server)
-      refute_receive {:player_moved, _, _}
+      refute_receive {:entity_moved, _, _}
     end
   end
 
@@ -354,13 +356,16 @@ defmodule Gameserver.WorldServerTest do
       assert {:error, :username_not_available} = WorldServer.join_entity(user2, server)
     end
 
-    test "mob does not broadcast user_joined", %{server: server} do
+    test "mob broadcasts entity_joined", %{server: server} do
       Phoenix.PubSub.subscribe(Gameserver.PubSub, WorldServer.presence_topic())
       mob = Entity.new(name: "goblin", type: :mob)
 
-      {:ok, _pos} = WorldServer.join_entity(mob, server)
+      {:ok, pos} = WorldServer.join_entity(mob, server)
 
-      refute_receive {:user_joined, _}
+      assert_receive {:entity_joined, entity}
+      assert entity.id == mob.id
+      assert entity.name == "goblin"
+      assert entity.pos == pos
     end
 
     test "mob position is retrievable", %{server: server} do
@@ -370,14 +375,16 @@ defmodule Gameserver.WorldServerTest do
       assert {:ok, ^pos} = WorldServer.get_position(mob.id, server)
     end
 
-    test "mob leave does not broadcast user_left", %{server: server} do
+    test "mob broadcasts entity_left on leave", %{server: server} do
       Phoenix.PubSub.subscribe(Gameserver.PubSub, WorldServer.presence_topic())
       mob = Entity.new(name: "goblin", type: :mob)
       {:ok, _pos} = WorldServer.join_entity(mob, server)
+      assert_receive {:entity_joined, _}
 
       :ok = WorldServer.leave(mob.id, server)
 
-      refute_receive {:user_left, _}
+      assert_receive {:entity_left, id}
+      assert id == mob.id
     end
 
     test "mob can move", %{server: server} do
