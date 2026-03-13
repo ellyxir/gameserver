@@ -1,6 +1,6 @@
 defmodule Gameserver.User do
   @moduledoc """
-  Represents a user account. See `Gameserver.Player` for the in-game representation.
+  Represents a user account. See `Gameserver.Entity` for the in-game representation.
   """
 
   import Ecto.Changeset
