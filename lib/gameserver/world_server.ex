@@ -246,7 +246,7 @@ defmodule Gameserver.WorldServer do
       ) do
     with {:ok, entity} <- get_entity(entities, id),
          :ok <- Cooldowns.check(entity.cooldowns, :move),
-         {:ok, updated} <- apply_move_and_notify(entity, direction, map) do
+         {:ok, updated} <- apply_move_and_notify(entity, direction, map, entities) do
       new_state = %{state | entities: Map.put(entities, id, updated)}
       {:reply, {:ok, updated.pos}, new_state}
     else
@@ -301,6 +301,20 @@ defmodule Gameserver.WorldServer do
     end
   end
 
+  # Mobs block everything. Players block mobs but not other players.
+  @spec entity_collision?(Entity.t(), GameMap.coord(), %{Ecto.UUID.t() => Entity.t()}) ::
+          boolean()
+  defp entity_collision?(actor, destination, entities) do
+    Enum.any?(entities, fn {id, other} ->
+      id != actor.id and other.pos == destination and blocks?(other, actor)
+    end)
+  end
+
+  @spec blocks?(Entity.t(), Entity.t()) :: boolean()
+  defp blocks?(%Entity{type: :mob}, _actor), do: true
+  defp blocks?(%Entity{type: :user}, %Entity{type: :mob}), do: true
+  defp blocks?(%Entity{type: :user}, %Entity{type: :user}), do: false
+
   @spec users(%{Ecto.UUID.t() => Entity.t()}) :: [Entity.t()]
   defp users(entities) do
     entities
@@ -317,12 +331,15 @@ defmodule Gameserver.WorldServer do
     {user, pos}
   end
 
-  @spec apply_move_and_notify(Entity.t(), GameMap.direction(), GameMap.t()) ::
+  @spec apply_move_and_notify(Entity.t(), GameMap.direction(), GameMap.t(), %{
+          Ecto.UUID.t() => Entity.t()
+        }) ::
           {:ok, Entity.t()} | {:error, :collision}
-  defp apply_move_and_notify(%Entity{pos: pos} = entity, direction, map) do
+  defp apply_move_and_notify(%Entity{pos: pos} = entity, direction, map, entities) do
     destination = GameMap.interpolate(pos, direction)
 
-    if GameMap.collision?(map, pos, destination) do
+    if GameMap.collision?(map, pos, destination) or
+         entity_collision?(entity, destination, entities) do
       {:error, :collision}
     else
       broadcast_movement({:entity_moved, entity.id, destination})

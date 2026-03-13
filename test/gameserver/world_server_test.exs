@@ -444,4 +444,69 @@ defmodule Gameserver.WorldServerTest do
       assert {:ok, {1, 1}} = WorldServer.join_entity(user_entity, server)
     end
   end
+
+  describe "entity-entity collision on movement" do
+    test "player cannot walk onto a mob's tile", %{server: server} do
+      {:ok, user} = User.new("alice")
+      {:ok, _spawn} = WorldServer.join_user(user, server)
+      # user at {1,1}, place mob at {2,1} (east of spawn)
+      mob = Entity.new(name: "goblin", type: :mob, pos: {2, 1})
+      {:ok, _pos} = WorldServer.join_entity(mob, server)
+
+      assert {:error, :collision} = WorldServer.move(user.id, :east, server)
+    end
+
+    test "mob cannot walk onto a player's tile", %{server: server} do
+      {:ok, user} = User.new("alice")
+      {:ok, _spawn} = WorldServer.join_user(user, server)
+      # mob at {2,1}, user at {1,1} — mob moves west into player
+      mob = Entity.new(name: "goblin", type: :mob, pos: {2, 1})
+      {:ok, _pos} = WorldServer.join_entity(mob, server)
+      Process.sleep(WorldServer.move_cooldown_ms() + 1)
+
+      assert {:error, :collision} = WorldServer.move(mob.id, :west, server)
+    end
+
+    test "mob cannot walk onto another mob's tile", %{server: server} do
+      mob1 = Entity.new(name: "goblin", type: :mob, pos: {2, 1})
+      mob2 = Entity.new(name: "spider", type: :mob, pos: {3, 1})
+      {:ok, _pos} = WorldServer.join_entity(mob1, server)
+      {:ok, _pos} = WorldServer.join_entity(mob2, server)
+      Process.sleep(WorldServer.move_cooldown_ms() + 1)
+
+      assert {:error, :collision} = WorldServer.move(mob1.id, :east, server)
+    end
+
+    test "players can stack on each other", %{server: server} do
+      {:ok, alice} = User.new("alice")
+      {:ok, bob} = User.new("bob")
+      {:ok, _spawn} = WorldServer.join_user(alice, server)
+      {:ok, _spawn} = WorldServer.join_user(bob, server)
+
+      # both at {1,1}, alice moves east
+      {:ok, {2, 1}} = WorldServer.move(alice.id, :east, server)
+      Process.sleep(WorldServer.move_cooldown_ms() + 1)
+      # bob follows alice — should succeed
+      assert {:ok, {2, 1}} = WorldServer.move(bob.id, :east, server)
+    end
+
+    test "movement still works when destination is empty", %{server: server} do
+      {:ok, user} = User.new("alice")
+      {:ok, _spawn} = WorldServer.join_user(user, server)
+
+      assert {:ok, {2, 1}} = WorldServer.move(user.id, :east, server)
+    end
+
+    test "entity collision does not broadcast movement", %{server: server} do
+      Phoenix.PubSub.subscribe(Gameserver.PubSub, WorldServer.movement_topic())
+      {:ok, user} = User.new("alice")
+      {:ok, _spawn} = WorldServer.join_user(user, server)
+      mob = Entity.new(name: "goblin", type: :mob, pos: {2, 1})
+      {:ok, _pos} = WorldServer.join_entity(mob, server)
+
+      {:error, :collision} = WorldServer.move(user.id, :east, server)
+
+      refute_receive {:entity_moved, _, _}
+    end
+  end
 end
