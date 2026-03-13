@@ -12,6 +12,12 @@ defmodule Gameserver.WorldServer do
 
   defstruct entities: %{}, map: nil
 
+  @typedoc "Internal state of the WorldServer"
+  @typep t() :: %__MODULE__{
+           entities: %{Ecto.UUID.t() => Entity.t()},
+           map: GameMap.t() | nil
+         }
+
   @typedoc "Error reasons for join operations"
   @type join_error() :: :already_joined | :username_not_available | :no_spawn_point | :collision
 
@@ -161,7 +167,7 @@ defmodule Gameserver.WorldServer do
       ) do
     with :ok <- check_not_already_joined(entities, id),
          :ok <- check_user_constraints(entities, entity),
-         {:ok, pos} <- resolve_spawn_position(entity, map, entities) do
+         {:ok, pos} <- resolve_spawn_position(entity, state) do
       entity = %{entity | pos: pos}
       broadcast_presence({:entity_joined, entity})
       {:reply, {:ok, pos}, %{state | entities: Map.put(entities, id, entity)}}
@@ -246,7 +252,7 @@ defmodule Gameserver.WorldServer do
       ) do
     with {:ok, entity} <- get_entity(entities, id),
          :ok <- Cooldowns.check(entity.cooldowns, :move),
-         {:ok, updated} <- apply_move_and_notify(entity, direction, map, entities) do
+         {:ok, updated} <- apply_move_and_notify(entity, direction, state) do
       new_state = %{state | entities: Map.put(entities, id, updated)}
       {:reply, {:ok, updated.pos}, new_state}
     else
@@ -275,9 +281,13 @@ defmodule Gameserver.WorldServer do
 
   defp check_user_constraints(_entities, %Entity{type: :mob}), do: :ok
 
-  @spec resolve_spawn_position(Entity.t(), GameMap.t(), %{Ecto.UUID.t() => Entity.t()}) ::
+  @spec resolve_spawn_position(Entity.t(), t()) ::
           {:ok, GameMap.coord()} | {:error, :no_spawn_point | :collision}
-  defp resolve_spawn_position(%Entity{type: :mob, pos: pos}, map, entities) when pos != nil do
+  defp resolve_spawn_position(
+         %Entity{type: :mob, pos: pos},
+         %__MODULE__{map: map, entities: entities}
+       )
+       when pos != nil do
     cond do
       GameMap.collision?(map, pos) -> {:error, :collision}
       tile_occupied?(entities, pos) -> {:error, :collision}
@@ -285,7 +295,7 @@ defmodule Gameserver.WorldServer do
     end
   end
 
-  defp resolve_spawn_position(_entity, map, _entities), do: GameMap.get_spawn_point(map)
+  defp resolve_spawn_position(_entity, %__MODULE__{map: map}), do: GameMap.get_spawn_point(map)
 
   @spec tile_occupied?(%{Ecto.UUID.t() => Entity.t()}, GameMap.coord()) :: boolean()
   defp tile_occupied?(entities, pos) do
@@ -331,11 +341,13 @@ defmodule Gameserver.WorldServer do
     {user, pos}
   end
 
-  @spec apply_move_and_notify(Entity.t(), GameMap.direction(), GameMap.t(), %{
-          Ecto.UUID.t() => Entity.t()
-        }) ::
+  @spec apply_move_and_notify(Entity.t(), GameMap.direction(), t()) ::
           {:ok, Entity.t()} | {:error, :collision}
-  defp apply_move_and_notify(%Entity{pos: pos} = entity, direction, map, entities) do
+  defp apply_move_and_notify(
+         %Entity{pos: pos} = entity,
+         direction,
+         %__MODULE__{map: map, entities: entities}
+       ) do
     destination = GameMap.interpolate(pos, direction)
 
     if GameMap.collision?(map, pos, destination) or
