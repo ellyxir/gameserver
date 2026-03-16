@@ -9,6 +9,7 @@ defmodule Gameserver.Entity do
   alias Gameserver.Cooldowns
   alias Gameserver.Map, as: GameMap
   alias Gameserver.Stats
+  alias Gameserver.UUID
 
   defstruct [:id, :type, :name, :pos, stats: %Stats{}, cooldowns: %Cooldowns{}]
 
@@ -17,7 +18,7 @@ defmodule Gameserver.Entity do
 
   @typedoc "An entity in the game world"
   @type t() :: %__MODULE__{
-          id: Ecto.UUID.t(),
+          id: UUID.t(),
           type: entity_type(),
           name: String.t(),
           pos: GameMap.coord() | nil,
@@ -33,13 +34,13 @@ defmodule Gameserver.Entity do
   """
   @spec new(keyword()) :: t()
   def new(opts) do
-    opts = Keyword.put_new_lazy(opts, :id, &Ecto.UUID.generate/0)
+    opts = Keyword.put_new_lazy(opts, :id, &UUID.generate/0)
     struct!(__MODULE__, opts)
   end
 
   @doc """
   Returns the entity's id.
   """
-  @spec id(t()) :: Ecto.UUID.t()
+  @spec id(t()) :: UUID.t()
   def id(%__MODULE__{id: id}), do: id
 end

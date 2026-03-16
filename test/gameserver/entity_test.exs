@@ -3,6 +3,7 @@ defmodule Gameserver.EntityTest do
 
   alias Gameserver.Entity
   alias Gameserver.Stats
+  alias Gameserver.UUID
 
   describe "new/1" do
     test "creates a user entity with defaults" do
@@ -31,7 +32,7 @@ defmodule Gameserver.EntityTest do
     end
 
     test "accepts an explicit id" do
-      id = Ecto.UUID.generate()
+      id = UUID.generate()
       entity = Entity.new(id: id, name: "bob", type: :user, pos: {0, 0})
       assert entity.id == id
     end

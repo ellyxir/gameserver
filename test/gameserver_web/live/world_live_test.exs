@@ -5,6 +5,7 @@ defmodule GameserverWeb.WorldLiveTest do
   import Phoenix.LiveViewTest
 
   alias Gameserver.User
+  alias Gameserver.UUID
   alias Gameserver.WorldServer
 
   describe "mount" do
@@ -13,7 +14,7 @@ defmodule GameserverWeb.WorldLiveTest do
     end
 
     test "redirects to /game when user_id not in WorldServer", %{conn: conn} do
-      fake_id = Ecto.UUID.generate()
+      fake_id = UUID.generate()
 
       assert {:error, {:live_redirect, %{to: "/game"}}} =
                live(conn, ~p"/world?user_id=#{fake_id}")

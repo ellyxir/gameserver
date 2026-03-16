@@ -2,12 +2,18 @@ defmodule Gameserver.UserTest do
   use ExUnit.Case, async: true
 
   alias Gameserver.User
+  alias Gameserver.UUID
 
-  defp valid_uuid?(uuid), do: match?({:ok, _}, Ecto.UUID.cast(uuid))
+  defp valid_uuid?(uuid),
+    do:
+      Regex.match?(
+        ~r/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
+        uuid
+      )
 
   describe "new/1 with keyword list" do
     test "creates user from id and username" do
-      id = Ecto.UUID.generate()
+      id = UUID.generate()
       assert {:ok, user} = User.new(id: id, username: "alice")
       assert user.id == id
       assert user.username == "alice"
@@ -15,7 +21,7 @@ defmodule Gameserver.UserTest do
 
     test "raises on unknown keys" do
       assert_raise KeyError, fn ->
-        User.new(id: Ecto.UUID.generate(), username: "alice", email: "a@b.com")
+        User.new(id: UUID.generate(), username: "alice", email: "a@b.com")
       end
     end
   end
