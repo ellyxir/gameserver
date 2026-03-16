@@ -5,6 +5,7 @@
         <%= for {row, y} <- Enum.with_index(@map_cells) do %>
           <div>
             <%= for {char, x} <- Enum.with_index(row) do %>
+              <% mob_symbol = Entities.mob_symbol_at(@entities, {x, y}) %>
               <%= cond do %>
                 <% my_position(assigns) == {x, y} -> %>
                   <span
@@ -15,7 +16,16 @@
                   >
                     @
                   </span>
-                <% players_at(@player_positions, {x, y}) != [] -> %>
+                <% mob_symbol != nil -> %>
+                  <span
+                    class="text-red-400 font-bold cursor-pointer"
+                    phx-click="tile-click"
+                    phx-value-x={x}
+                    phx-value-y={y}
+                  >
+                    {mob_symbol}
+                  </span>
+                <% Entities.players_at(@entities, {x, y}) != [] -> %>
                   <span
                     class="text-cyan-300 font-bold cursor-pointer"
                     phx-click="tile-click"
@@ -47,7 +57,7 @@
       <h2 class="text-lg font-bold mb-2">Online Users</h2>
       <p class="mb-4">Welcome, {@username}!</p>
       <ul class="list-disc list-inside">
-        <%= for username <- usernames(@player_positions) do %>
+        <%= for username <- Entities.usernames(@entities) do %>
           <li>{username}</li>
         <% end %>
       </ul>

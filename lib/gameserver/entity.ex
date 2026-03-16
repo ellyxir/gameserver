@@ -20,7 +20,7 @@ defmodule Gameserver.Entity do
           id: Ecto.UUID.t(),
           type: entity_type(),
           name: String.t(),
-          pos: GameMap.coord(),
+          pos: GameMap.coord() | nil,
           stats: Stats.t(),
           cooldowns: Cooldowns.t()
         }

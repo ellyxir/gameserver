@@ -1,21 +1,16 @@
 defmodule GameserverWeb.WorldLive do
   @moduledoc """
   LiveView for the world page, rendering the dungeon map with
-  the player's position and online users list. Handles keyboard
+  players, mobs, and an online users list. Handles keyboard
   (WASD/arrow) and tile click input for player movement.
   """
 
   use GameserverWeb, :live_view
 
-  require Logger
-
   alias Gameserver.Entity
   alias Gameserver.Map, as: GameMap
-  alias Gameserver.User
   alias Gameserver.WorldServer
-
-  # All player positions keyed by user_id.
-  @typep player_positions() :: %{Ecto.UUID.t() => {User.username(), GameMap.coord()}}
+  alias GameserverWeb.Entities
 
   @impl Phoenix.LiveView
   def mount(params, _session, socket) do
@@ -30,18 +25,20 @@ defmodule GameserverWeb.WorldLive do
 
         all_players = WorldServer.players()
 
-        player_positions =
-          Map.new(all_players, fn {%User{id: id, username: uname}, pos} -> {id, {uname, pos}} end)
+        entities =
+          %Entities{}
+          |> Entities.add_players(all_players)
 
-        if Map.has_key?(player_positions, user_id) do
+        if Entities.has_entity?(entities, user_id) do
           map_cells = WorldServer.get_map() |> GameMap.to_cells()
+          entities = Entities.add_mobs(entities, WorldServer.mobs())
 
           {:ok,
            assign(socket,
              user_id: user_id,
              username: username,
              map_cells: map_cells,
-             player_positions: player_positions
+             entities: entities
            )}
         else
           {:ok, push_navigate(socket, to: ~p"/game")}
@@ -100,24 +97,17 @@ defmodule GameserverWeb.WorldLive do
   end
 
   @impl Phoenix.LiveView
-  def handle_info({:entity_joined, %Entity{type: :user} = entity}, socket) do
-    player_positions =
-      Map.put(socket.assigns.player_positions, entity.id, {entity.name, entity.pos})
-
-    {:noreply, assign(socket, player_positions: player_positions)}
-  end
-
-  def handle_info({:entity_joined, %Entity{type: type}}, socket) do
-    Logger.warning("unhandled entity_joined for type #{type}")
-    {:noreply, socket}
+  def handle_info({:entity_joined, %Entity{} = entity}, socket) do
+    entities = Entities.add_entity(socket.assigns.entities, entity)
+    {:noreply, assign(socket, entities: entities)}
   end
 
   def handle_info({:entity_moved, id, pos}, socket) do
-    if Map.has_key?(socket.assigns.player_positions, id) do
-      player_positions = put_position(socket.assigns.player_positions, id, pos)
-      {:noreply, assign(socket, player_positions: player_positions)}
+    entities = socket.assigns.entities
+
+    if Entities.has_entity?(entities, id) do
+      {:noreply, assign(socket, entities: Entities.update_position(entities, id, pos))}
     else
-      Logger.warning("unhandled entity_moved for id #{id}")
       {:noreply, socket}
     end
   end
@@ -126,8 +116,8 @@ defmodule GameserverWeb.WorldLive do
     if id == socket.assigns.user_id do
       {:noreply, push_navigate(socket, to: ~p"/game")}
     else
-      player_positions = Map.delete(socket.assigns.player_positions, id)
-      {:noreply, assign(socket, player_positions: player_positions)}
+      entities = Entities.remove(socket.assigns.entities, id)
+      {:noreply, assign(socket, entities: entities)}
     end
   end
 
@@ -145,24 +135,9 @@ defmodule GameserverWeb.WorldLive do
   @spec my_position(Phoenix.LiveView.Socket.t() | map()) :: GameMap.coord()
   defp my_position(%Phoenix.LiveView.Socket{assigns: assigns}), do: my_position(assigns)
 
-  defp my_position(%{user_id: user_id, player_positions: player_positions}) do
-    {_username, position} = player_positions[user_id]
+  defp my_position(%{user_id: user_id, entities: entities}) do
+    {:ok, position} = Entities.get_position(entities, user_id)
     position
-  end
-
-  @spec put_position(player_positions(), Ecto.UUID.t(), GameMap.coord()) :: player_positions()
-  defp put_position(player_positions, user_id, position) do
-    Map.update!(player_positions, user_id, fn {username, _old} -> {username, position} end)
-  end
-
-  @spec players_at(player_positions(), GameMap.coord()) :: [Ecto.UUID.t()]
-  defp players_at(player_positions, coord) do
-    for {id, {_username, pos}} <- player_positions, pos == coord, do: id
-  end
-
-  @spec usernames(player_positions()) :: [User.username()]
-  defp usernames(player_positions) do
-    for {_id, {username, _pos}} <- player_positions, do: username
   end
 
   @spec validate_user(String.t() | nil) :: {:ok, String.t()} | :error

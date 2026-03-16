@@ -163,6 +163,45 @@ defmodule Gameserver.WorldServerTest do
     end
   end
 
+  describe "mobs/1" do
+    test "returns empty list when no mobs", %{server: server} do
+      assert [] = WorldServer.mobs(server)
+    end
+
+    test "returns all mobs with positions", %{server: server} do
+      goblin = Entity.new(name: "goblin", type: :mob, pos: {3, 2})
+      spider = Entity.new(name: "spider", type: :mob, pos: {11, 2})
+      {:ok, _pos} = WorldServer.join_entity(goblin, server)
+      {:ok, _pos} = WorldServer.join_entity(spider, server)
+
+      result = WorldServer.mobs(server)
+      ids = Enum.map(result, fn {entity, _pos} -> entity.id end)
+
+      assert length(result) == 2
+      assert goblin.id in ids
+      assert spider.id in ids
+    end
+
+    test "does not include users", %{server: server} do
+      {:ok, user} = User.new("alice")
+      {:ok, _pos} = WorldServer.join_user(user, server)
+      mob = Entity.new(name: "goblin", type: :mob, pos: {3, 2})
+      {:ok, _pos} = WorldServer.join_entity(mob, server)
+
+      result = WorldServer.mobs(server)
+
+      assert [{entity, {3, 2}}] = result
+      assert entity.id == mob.id
+    end
+
+    test "returns empty list when only users exist", %{server: server} do
+      {:ok, user} = User.new("alice")
+      {:ok, _pos} = WorldServer.join_user(user, server)
+
+      assert [] = WorldServer.mobs(server)
+    end
+  end
+
   describe "get_map/1" do
     test "returns the map", %{server: server} do
       assert %Gameserver.Map{} = WorldServer.get_map(server)
@@ -393,6 +432,120 @@ defmodule Gameserver.WorldServerTest do
 
       # spawn is on upstairs tile at {1,1} in sample_dungeon, move east to {2,1}
       assert {:ok, {2, 1}} = WorldServer.move(mob.id, :east, server)
+    end
+  end
+
+  describe "join_entity/2 with pre-set position" do
+    test "mob with pre-set pos spawns at that pos", %{server: server} do
+      mob = Entity.new(name: "goblin", type: :mob, pos: {3, 2})
+
+      assert {:ok, {3, 2}} = WorldServer.join_entity(mob, server)
+      assert {:ok, {3, 2}} = WorldServer.get_position(mob.id, server)
+    end
+
+    test "mob with pos on a wall is rejected", %{server: server} do
+      mob = Entity.new(name: "goblin", type: :mob, pos: {0, 0})
+
+      assert {:error, :collision} = WorldServer.join_entity(mob, server)
+    end
+
+    test "mob rejected when tile is occupied by another entity", %{server: server} do
+      mob1 = Entity.new(name: "goblin", type: :mob, pos: {3, 2})
+      mob2 = Entity.new(name: "spider", type: :mob, pos: {3, 2})
+
+      {:ok, _pos} = WorldServer.join_entity(mob1, server)
+      assert {:error, :collision} = WorldServer.join_entity(mob2, server)
+    end
+
+    test "mob without pos gets spawn point", %{server: server} do
+      mob = Entity.new(name: "goblin", type: :mob)
+
+      assert {:ok, {1, 1}} = WorldServer.join_entity(mob, server)
+    end
+
+    test "mob with out-of-bounds pos is rejected", %{server: server} do
+      mob = Entity.new(name: "goblin", type: :mob, pos: {999, 999})
+
+      assert {:error, :collision} = WorldServer.join_entity(mob, server)
+    end
+
+    test "mob rejected when tile is occupied by a user", %{server: server} do
+      {:ok, user} = User.new("alice")
+      {:ok, spawn} = WorldServer.join_user(user, server)
+      mob = Entity.new(name: "goblin", type: :mob, pos: spawn)
+
+      assert {:error, :collision} = WorldServer.join_entity(mob, server)
+    end
+
+    test "user with pre-set pos still gets spawn point", %{server: server} do
+      user_entity = Entity.new(name: "alice", type: :user, pos: {5, 10})
+
+      assert {:ok, {1, 1}} = WorldServer.join_entity(user_entity, server)
+    end
+  end
+
+  describe "entity-entity collision on movement" do
+    test "player cannot walk onto a mob's tile", %{server: server} do
+      {:ok, user} = User.new("alice")
+      {:ok, _spawn} = WorldServer.join_user(user, server)
+      # user at {1,1}, place mob at {2,1} (east of spawn)
+      mob = Entity.new(name: "goblin", type: :mob, pos: {2, 1})
+      {:ok, _pos} = WorldServer.join_entity(mob, server)
+
+      assert {:error, :collision} = WorldServer.move(user.id, :east, server)
+    end
+
+    test "mob cannot walk onto a player's tile", %{server: server} do
+      {:ok, user} = User.new("alice")
+      {:ok, _spawn} = WorldServer.join_user(user, server)
+      # mob at {2,1}, user at {1,1} — mob moves west into player
+      mob = Entity.new(name: "goblin", type: :mob, pos: {2, 1})
+      {:ok, _pos} = WorldServer.join_entity(mob, server)
+      Process.sleep(WorldServer.move_cooldown_ms() + 1)
+
+      assert {:error, :collision} = WorldServer.move(mob.id, :west, server)
+    end
+
+    test "mob cannot walk onto another mob's tile", %{server: server} do
+      mob1 = Entity.new(name: "goblin", type: :mob, pos: {2, 1})
+      mob2 = Entity.new(name: "spider", type: :mob, pos: {3, 1})
+      {:ok, _pos} = WorldServer.join_entity(mob1, server)
+      {:ok, _pos} = WorldServer.join_entity(mob2, server)
+      Process.sleep(WorldServer.move_cooldown_ms() + 1)
+
+      assert {:error, :collision} = WorldServer.move(mob1.id, :east, server)
+    end
+
+    test "players can stack on each other", %{server: server} do
+      {:ok, alice} = User.new("alice")
+      {:ok, bob} = User.new("bob")
+      {:ok, _spawn} = WorldServer.join_user(alice, server)
+      {:ok, _spawn} = WorldServer.join_user(bob, server)
+
+      # both at {1,1}, alice moves east
+      {:ok, {2, 1}} = WorldServer.move(alice.id, :east, server)
+      Process.sleep(WorldServer.move_cooldown_ms() + 1)
+      # bob follows alice — should succeed
+      assert {:ok, {2, 1}} = WorldServer.move(bob.id, :east, server)
+    end
+
+    test "movement still works when destination is empty", %{server: server} do
+      {:ok, user} = User.new("alice")
+      {:ok, _spawn} = WorldServer.join_user(user, server)
+
+      assert {:ok, {2, 1}} = WorldServer.move(user.id, :east, server)
+    end
+
+    test "entity collision does not broadcast movement", %{server: server} do
+      Phoenix.PubSub.subscribe(Gameserver.PubSub, WorldServer.movement_topic())
+      {:ok, user} = User.new("alice")
+      {:ok, _spawn} = WorldServer.join_user(user, server)
+      mob = Entity.new(name: "goblin", type: :mob, pos: {2, 1})
+      {:ok, _pos} = WorldServer.join_entity(mob, server)
+
+      {:error, :collision} = WorldServer.move(user.id, :east, server)
+
+      refute_receive {:entity_moved, _, _}
     end
   end
 end

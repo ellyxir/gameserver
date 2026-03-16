@@ -12,8 +12,13 @@ defmodule Gameserver.WorldServer do
 
   defstruct entities: %{}, map: nil
 
+  @typep t() :: %__MODULE__{
+           entities: %{Ecto.UUID.t() => Entity.t()},
+           map: GameMap.t() | nil
+         }
+
   @typedoc "Error reasons for join operations"
-  @type join_error() :: :already_joined | :username_not_available | :no_spawn_point
+  @type join_error() :: :already_joined | :username_not_available | :no_spawn_point | :collision
 
   @presence_topic "world:presence"
   @movement_topic "world:movement"
@@ -48,7 +53,11 @@ defmodule Gameserver.WorldServer do
   Adds an entity directly to the world and assigns a spawn position.
 
   For `:user` entities, validates username uniqueness and duplicate joins.
-  For `:mob` entities, only checks for duplicate ID.
+  Pre-set positions on user entities are ignored — users always get the spawn point.
+
+  For `:mob` entities, only checks for duplicate ID. If the mob has a pre-set
+  `pos`, it is validated (must be a walkable, unoccupied tile). Mobs without
+  a pre-set position get the default spawn point.
   """
   @spec join_entity(Entity.t(), GenServer.server()) ::
           {:ok, GameMap.coord()} | {:error, join_error()}
@@ -89,6 +98,14 @@ defmodule Gameserver.WorldServer do
   @spec players(GenServer.server()) :: [{User.t(), GameMap.coord()}]
   def players(server \\ __MODULE__) do
     GenServer.call(server, :players)
+  end
+
+  @doc """
+  Returns all mob-type entities as `{entity, position}` tuples.
+  """
+  @spec mobs(GenServer.server()) :: [{Entity.t(), GameMap.coord()}]
+  def mobs(server \\ __MODULE__) do
+    GenServer.call(server, :mobs)
   end
 
   @doc """
@@ -153,11 +170,11 @@ defmodule Gameserver.WorldServer do
   def handle_call(
         {:join_entity, %Entity{id: id} = entity},
         _from,
-        %__MODULE__{entities: entities, map: map} = state
+        %__MODULE__{entities: entities} = state
       ) do
     with :ok <- check_not_already_joined(entities, id),
          :ok <- check_user_constraints(entities, entity),
-         {:ok, pos} <- GameMap.get_spawn_point(map) do
+         {:ok, pos} <- resolve_spawn_position(entity, state) do
       entity = %{entity | pos: pos}
       broadcast_presence({:entity_joined, entity})
       {:reply, {:ok, pos}, %{state | entities: Map.put(entities, id, entity)}}
@@ -182,7 +199,7 @@ defmodule Gameserver.WorldServer do
   def handle_call(:who, _from, %__MODULE__{entities: entities} = state) do
     result =
       entities
-      |> users()
+      |> users_from_entities()
       |> Enum.map(&entity_to_tuple/1)
 
     {:reply, result, state}
@@ -192,8 +209,18 @@ defmodule Gameserver.WorldServer do
   def handle_call(:players, _from, %__MODULE__{entities: entities} = state) do
     result =
       entities
-      |> users()
+      |> users_from_entities()
       |> Enum.map(&entity_to_user_pos/1)
+
+    {:reply, result, state}
+  end
+
+  @impl GenServer
+  def handle_call(:mobs, _from, %__MODULE__{entities: entities} = state) do
+    result =
+      entities
+      |> mobs_from_entities()
+      |> Enum.map(&entity_to_mob_pos/1)
 
     {:reply, result, state}
   end
@@ -238,11 +265,11 @@ defmodule Gameserver.WorldServer do
   def handle_call(
         {:move, id, direction},
         _from,
-        %__MODULE__{entities: entities, map: map} = state
+        %__MODULE__{entities: entities} = state
       ) do
     with {:ok, entity} <- get_entity(entities, id),
          :ok <- Cooldowns.check(entity.cooldowns, :move),
-         {:ok, updated} <- apply_move_and_notify(entity, direction, map) do
+         {:ok, updated} <- apply_move_and_notify(entity, direction, state) do
       new_state = %{state | entities: Map.put(entities, id, updated)}
       {:reply, {:ok, updated.pos}, new_state}
     else
@@ -271,6 +298,27 @@ defmodule Gameserver.WorldServer do
 
   defp check_user_constraints(_entities, %Entity{type: :mob}), do: :ok
 
+  @spec resolve_spawn_position(Entity.t(), t()) ::
+          {:ok, GameMap.coord()} | {:error, :no_spawn_point | :collision}
+  defp resolve_spawn_position(
+         %Entity{type: :mob, pos: pos},
+         %__MODULE__{map: map, entities: entities}
+       )
+       when pos != nil do
+    cond do
+      GameMap.collision?(map, pos) -> {:error, :collision}
+      tile_occupied?(entities, pos) -> {:error, :collision}
+      true -> {:ok, pos}
+    end
+  end
+
+  defp resolve_spawn_position(_entity, %__MODULE__{map: map}), do: GameMap.get_spawn_point(map)
+
+  @spec tile_occupied?(%{Ecto.UUID.t() => Entity.t()}, GameMap.coord()) :: boolean()
+  defp tile_occupied?(entities, pos) do
+    Enum.any?(entities, fn {_id, entity} -> entity.pos == pos end)
+  end
+
   @spec get_entity(%{Ecto.UUID.t() => Entity.t()}, Ecto.UUID.t()) ::
           {:ok, Entity.t()} | {:error, :not_found}
   defp get_entity(entities, id) do
@@ -280,11 +328,32 @@ defmodule Gameserver.WorldServer do
     end
   end
 
-  @spec users(%{Ecto.UUID.t() => Entity.t()}) :: [Entity.t()]
-  defp users(entities) do
+  # Mobs block everything. Players block mobs but not other players.
+  @spec entity_collision?(Entity.t(), GameMap.coord(), %{Ecto.UUID.t() => Entity.t()}) ::
+          boolean()
+  defp entity_collision?(actor, destination, entities) do
+    Enum.any?(entities, fn {id, other} ->
+      id != actor.id and other.pos == destination and blocks?(other, actor)
+    end)
+  end
+
+  @spec blocks?(Entity.t(), Entity.t()) :: boolean()
+  defp blocks?(%Entity{type: :mob}, _actor), do: true
+  defp blocks?(%Entity{type: :user}, %Entity{type: :mob}), do: true
+  defp blocks?(%Entity{type: :user}, %Entity{type: :user}), do: false
+
+  @spec users_from_entities(%{Ecto.UUID.t() => Entity.t()}) :: [Entity.t()]
+  defp users_from_entities(entities) do
     entities
     |> Map.values()
     |> Enum.filter(&(&1.type == :user))
+  end
+
+  @spec mobs_from_entities(%{Ecto.UUID.t() => Entity.t()}) :: [Entity.t()]
+  defp mobs_from_entities(entities) do
+    entities
+    |> Map.values()
+    |> Enum.filter(&(&1.type == :mob))
   end
 
   @spec entity_to_tuple(Entity.t()) :: {Ecto.UUID.t(), String.t()}
@@ -296,12 +365,20 @@ defmodule Gameserver.WorldServer do
     {user, pos}
   end
 
-  @spec apply_move_and_notify(Entity.t(), GameMap.direction(), GameMap.t()) ::
+  @spec entity_to_mob_pos(Entity.t()) :: {Entity.t(), GameMap.coord()}
+  defp entity_to_mob_pos(%Entity{pos: pos} = entity), do: {entity, pos}
+
+  @spec apply_move_and_notify(Entity.t(), GameMap.direction(), t()) ::
           {:ok, Entity.t()} | {:error, :collision}
-  defp apply_move_and_notify(%Entity{pos: pos} = entity, direction, map) do
+  defp apply_move_and_notify(
+         %Entity{pos: pos} = entity,
+         direction,
+         %__MODULE__{map: map, entities: entities}
+       ) do
     destination = GameMap.interpolate(pos, direction)
 
-    if GameMap.collision?(map, pos, destination) do
+    if GameMap.collision?(map, pos, destination) or
+         entity_collision?(entity, destination, entities) do
       {:error, :collision}
     else
       broadcast_movement({:entity_moved, entity.id, destination})
