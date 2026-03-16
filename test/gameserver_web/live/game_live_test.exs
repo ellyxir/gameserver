@@ -6,14 +6,14 @@ defmodule GameserverWeb.GameLiveTest do
 
   describe "mount" do
     test "renders login form", %{conn: conn} do
-      {:ok, view, html} = live(conn, ~p"/game")
-      assert html =~ "Username"
-      assert has_element?(view, "input[name='login_form[username]']")
+      {:ok, view, _html} = live(conn, ~p"/game")
+      assert has_element?(view, "#login-form")
+      assert has_element?(view, "#login-form input[name='login_form[username]']")
     end
 
     test "wraps content with Layouts.app", %{conn: conn} do
-      {:ok, _view, html} = live(conn, ~p"/game")
-      assert html =~ "<header class=\"navbar"
+      {:ok, view, _html} = live(conn, ~p"/game")
+      assert has_element?(view, "header.navbar")
     end
   end
 
@@ -23,7 +23,7 @@ defmodule GameserverWeb.GameLiveTest do
 
       html =
         view
-        |> element("form")
+        |> element("#login-form")
         |> render_change(%{login_form: %{username: "ab"}})
 
       assert html =~ "should be at least 3 character"
@@ -34,7 +34,7 @@ defmodule GameserverWeb.GameLiveTest do
 
       html =
         view
-        |> element("form")
+        |> element("#login-form")
         |> render_change(%{login_form: %{username: "alice"}})
 
       refute html =~ "should be at least"
@@ -47,7 +47,7 @@ defmodule GameserverWeb.GameLiveTest do
       {:ok, view, _html} = live(conn, ~p"/game")
 
       view
-      |> element("form")
+      |> element("#login-form")
       |> render_submit(%{login_form: %{username: "testuser"}})
 
       {path, _flash} = assert_redirect(view)
@@ -59,7 +59,7 @@ defmodule GameserverWeb.GameLiveTest do
 
       html =
         view
-        |> element("form")
+        |> element("#login-form")
         |> render_submit(%{login_form: %{username: "ab"}})
 
       assert html =~ "should be at least 3 character"
@@ -74,7 +74,7 @@ defmodule GameserverWeb.GameLiveTest do
 
       html =
         view
-        |> element("form")
+        |> element("#login-form")
         |> render_submit(%{login_form: %{username: unique_name}})
 
       # Should stay on the form (no redirect) and show an error
