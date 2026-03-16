@@ -1,5 +1,5 @@
 <Layouts.app flash={@flash}>
-  <.form for={@login_form} phx-change="validate" phx-submit="save">
+  <.form for={@login_form} id="login-form" phx-change="validate" phx-submit="save">
     <.input type="text" field={@login_form[:username]} label="Username" />
     <button type="submit">Join World</button>
   </.form>
