@@ -12,7 +12,6 @@ defmodule Gameserver.WorldServer do
 
   defstruct entities: %{}, map: nil
 
-  @typedoc "Internal state of the WorldServer"
   @typep t() :: %__MODULE__{
            entities: %{Ecto.UUID.t() => Entity.t()},
            map: GameMap.t() | nil
@@ -171,7 +170,7 @@ defmodule Gameserver.WorldServer do
   def handle_call(
         {:join_entity, %Entity{id: id} = entity},
         _from,
-        %__MODULE__{entities: entities, map: map} = state
+        %__MODULE__{entities: entities} = state
       ) do
     with :ok <- check_not_already_joined(entities, id),
          :ok <- check_user_constraints(entities, entity),
@@ -266,7 +265,7 @@ defmodule Gameserver.WorldServer do
   def handle_call(
         {:move, id, direction},
         _from,
-        %__MODULE__{entities: entities, map: map} = state
+        %__MODULE__{entities: entities} = state
       ) do
     with {:ok, entity} <- get_entity(entities, id),
          :ok <- Cooldowns.check(entity.cooldowns, :move),
