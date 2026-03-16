@@ -5,6 +5,8 @@ defmodule Gameserver.User do
 
   import Ecto.Changeset
 
+  alias Gameserver.UUID
+
   defstruct [:id, :username]
 
   @types %{username: :string}
@@ -17,7 +19,7 @@ defmodule Gameserver.User do
   username is the account name, which we use also as the player name for now
   """
   @type t() :: %__MODULE__{
-          id: Ecto.UUID.t(),
+          id: UUID.t(),
           username: username()
         }
 
@@ -39,7 +41,7 @@ defmodule Gameserver.User do
 
     case apply_action(changeset, :insert) do
       {:ok, data} ->
-        {:ok, %__MODULE__{id: Ecto.UUID.generate(), username: data.username}}
+        {:ok, %__MODULE__{id: UUID.generate(), username: data.username}}
 
       {:error, changeset} ->
         {:error, error_reason(changeset)}

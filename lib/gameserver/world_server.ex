@@ -9,11 +9,12 @@ defmodule Gameserver.WorldServer do
   alias Gameserver.Entity
   alias Gameserver.Map, as: GameMap
   alias Gameserver.User
+  alias Gameserver.UUID
 
   defstruct entities: %{}, map: nil
 
   @typep t() :: %__MODULE__{
-           entities: %{Ecto.UUID.t() => Entity.t()},
+           entities: %{UUID.t() => Entity.t()},
            map: GameMap.t() | nil
          }
 
@@ -68,7 +69,7 @@ defmodule Gameserver.WorldServer do
   @doc """
   Removes an entity from the world by id.
   """
-  @spec leave(Ecto.UUID.t(), GenServer.server()) :: :ok | {:error, :not_found}
+  @spec leave(UUID.t(), GenServer.server()) :: :ok | {:error, :not_found}
   def leave(id, server \\ __MODULE__) when is_binary(id) do
     GenServer.call(server, {:leave, id})
   end
@@ -80,13 +81,13 @@ defmodule Gameserver.WorldServer do
   - `who(user_id)` - returns matching user or empty list
   - `who([user_ids])` - returns matching users
   """
-  @spec who(GenServer.server()) :: [{Ecto.UUID.t(), User.username()}]
+  @spec who(GenServer.server()) :: [{UUID.t(), User.username()}]
   def who(server \\ __MODULE__) do
     GenServer.call(server, :who)
   end
 
-  @spec who(Ecto.UUID.t() | [Ecto.UUID.t()], GenServer.server()) :: [
-          {Ecto.UUID.t(), User.username()}
+  @spec who(UUID.t() | [UUID.t()], GenServer.server()) :: [
+          {UUID.t(), User.username()}
         ]
   def who(id_or_ids, server) when is_binary(id_or_ids) or is_list(id_or_ids) do
     GenServer.call(server, {:who, id_or_ids})
@@ -111,7 +112,7 @@ defmodule Gameserver.WorldServer do
   @doc """
   Returns the position of an entity by id.
   """
-  @spec get_position(Ecto.UUID.t(), GenServer.server()) ::
+  @spec get_position(UUID.t(), GenServer.server()) ::
           {:ok, GameMap.coord()} | {:error, :not_found}
   def get_position(id, server \\ __MODULE__) when is_binary(id) do
     GenServer.call(server, {:get_position, id})
@@ -125,7 +126,7 @@ defmodule Gameserver.WorldServer do
     `{:error, :cooldown}` if the entity moved too recently,
     `{:error, :not_found}` if the entity is not in the world.
   """
-  @spec move(Ecto.UUID.t(), GameMap.direction(), GenServer.server()) ::
+  @spec move(UUID.t(), GameMap.direction(), GenServer.server()) ::
           {:ok, GameMap.coord()} | {:error, :not_found | :collision | :cooldown}
   def move(id, direction, server \\ __MODULE__) when is_binary(id) do
     GenServer.call(server, {:move, id, direction})
@@ -284,13 +285,13 @@ defmodule Gameserver.WorldServer do
 
   # Private helpers
 
-  @spec check_not_already_joined(%{Ecto.UUID.t() => Entity.t()}, Ecto.UUID.t()) ::
+  @spec check_not_already_joined(%{UUID.t() => Entity.t()}, UUID.t()) ::
           :ok | {:error, :already_joined}
   defp check_not_already_joined(entities, id) do
     if Map.has_key?(entities, id), do: {:error, :already_joined}, else: :ok
   end
 
-  @spec check_user_constraints(%{Ecto.UUID.t() => Entity.t()}, Entity.t()) ::
+  @spec check_user_constraints(%{UUID.t() => Entity.t()}, Entity.t()) ::
           :ok | {:error, :username_not_available}
   defp check_user_constraints(entities, %Entity{type: :user, name: name}) do
     if username_taken?(entities, name), do: {:error, :username_not_available}, else: :ok
@@ -314,12 +315,12 @@ defmodule Gameserver.WorldServer do
 
   defp resolve_spawn_position(_entity, %__MODULE__{map: map}), do: GameMap.get_spawn_point(map)
 
-  @spec tile_occupied?(%{Ecto.UUID.t() => Entity.t()}, GameMap.coord()) :: boolean()
+  @spec tile_occupied?(%{UUID.t() => Entity.t()}, GameMap.coord()) :: boolean()
   defp tile_occupied?(entities, pos) do
     Enum.any?(entities, fn {_id, entity} -> entity.pos == pos end)
   end
 
-  @spec get_entity(%{Ecto.UUID.t() => Entity.t()}, Ecto.UUID.t()) ::
+  @spec get_entity(%{UUID.t() => Entity.t()}, UUID.t()) ::
           {:ok, Entity.t()} | {:error, :not_found}
   defp get_entity(entities, id) do
     case Map.get(entities, id) do
@@ -329,7 +330,7 @@ defmodule Gameserver.WorldServer do
   end
 
   # Mobs block everything. Players block mobs but not other players.
-  @spec entity_collision?(Entity.t(), GameMap.coord(), %{Ecto.UUID.t() => Entity.t()}) ::
+  @spec entity_collision?(Entity.t(), GameMap.coord(), %{UUID.t() => Entity.t()}) ::
           boolean()
   defp entity_collision?(actor, destination, entities) do
     Enum.any?(entities, fn {id, other} ->
@@ -342,21 +343,21 @@ defmodule Gameserver.WorldServer do
   defp blocks?(%Entity{type: :user}, %Entity{type: :mob}), do: true
   defp blocks?(%Entity{type: :user}, %Entity{type: :user}), do: false
 
-  @spec users_from_entities(%{Ecto.UUID.t() => Entity.t()}) :: [Entity.t()]
+  @spec users_from_entities(%{UUID.t() => Entity.t()}) :: [Entity.t()]
   defp users_from_entities(entities) do
     entities
     |> Map.values()
     |> Enum.filter(&(&1.type == :user))
   end
 
-  @spec mobs_from_entities(%{Ecto.UUID.t() => Entity.t()}) :: [Entity.t()]
+  @spec mobs_from_entities(%{UUID.t() => Entity.t()}) :: [Entity.t()]
   defp mobs_from_entities(entities) do
     entities
     |> Map.values()
     |> Enum.filter(&(&1.type == :mob))
   end
 
-  @spec entity_to_tuple(Entity.t()) :: {Ecto.UUID.t(), String.t()}
+  @spec entity_to_tuple(Entity.t()) :: {UUID.t(), String.t()}
   defp entity_to_tuple(%Entity{id: id, name: name}), do: {id, name}
 
   @spec entity_to_user_pos(Entity.t()) :: {User.t(), GameMap.coord()}
@@ -387,17 +388,17 @@ defmodule Gameserver.WorldServer do
     end
   end
 
-  @spec username_taken?(%{Ecto.UUID.t() => Entity.t()}, String.t()) :: boolean()
+  @spec username_taken?(%{UUID.t() => Entity.t()}, String.t()) :: boolean()
   defp username_taken?(entities, name) do
     Enum.any?(entities, fn {_id, entity} -> entity.type == :user and entity.name == name end)
   end
 
-  @spec broadcast_presence({:entity_joined, Entity.t()} | {:entity_left, Ecto.UUID.t()}) :: :ok
+  @spec broadcast_presence({:entity_joined, Entity.t()} | {:entity_left, UUID.t()}) :: :ok
   defp broadcast_presence(message) do
     Phoenix.PubSub.broadcast(Gameserver.PubSub, @presence_topic, message)
   end
 
-  @spec broadcast_movement({:entity_moved, Ecto.UUID.t(), GameMap.coord()}) :: :ok
+  @spec broadcast_movement({:entity_moved, UUID.t(), GameMap.coord()}) :: :ok
   defp broadcast_movement(message) do
     Phoenix.PubSub.broadcast(Gameserver.PubSub, @movement_topic, message)
   end

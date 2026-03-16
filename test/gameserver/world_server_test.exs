@@ -3,6 +3,7 @@ defmodule Gameserver.WorldServerTest do
 
   alias Gameserver.Entity
   alias Gameserver.User
+  alias Gameserver.UUID
   alias Gameserver.WorldServer
 
   setup do
@@ -66,7 +67,7 @@ defmodule Gameserver.WorldServerTest do
     end
 
     test "returns error when user not in world", %{server: server} do
-      fake_id = Ecto.UUID.generate()
+      fake_id = UUID.generate()
 
       assert {:error, :not_found} = WorldServer.leave(fake_id, server)
     end
@@ -138,7 +139,7 @@ defmodule Gameserver.WorldServerTest do
     end
 
     test "returns error for unknown player", %{server: server} do
-      fake_id = Ecto.UUID.generate()
+      fake_id = UUID.generate()
 
       assert {:error, :not_found} = WorldServer.get_position(fake_id, server)
     end
@@ -227,7 +228,7 @@ defmodule Gameserver.WorldServerTest do
     end
 
     test "returns error for unknown player", %{server: server} do
-      fake_id = Ecto.UUID.generate()
+      fake_id = UUID.generate()
       assert {:error, :not_found} = WorldServer.move(fake_id, :east, server)
     end
 
@@ -308,7 +309,7 @@ defmodule Gameserver.WorldServerTest do
 
     test "does not broadcast on failed leave", %{server: server} do
       Phoenix.PubSub.subscribe(Gameserver.PubSub, WorldServer.presence_topic())
-      fake_id = Ecto.UUID.generate()
+      fake_id = UUID.generate()
 
       {:error, :not_found} = WorldServer.leave(fake_id, server)
 

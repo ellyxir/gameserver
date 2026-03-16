@@ -9,10 +9,11 @@ defmodule GameserverWeb.Entities do
   alias Gameserver.Entity
   alias Gameserver.Map, as: GameMap
   alias Gameserver.User
+  alias Gameserver.UUID
 
   @typedoc "Tracks all entities for LiveView rendering"
   @type t() :: %__MODULE__{
-          map: %{Ecto.UUID.t() => entry()}
+          map: %{UUID.t() => entry()}
         }
 
   @typep entry() :: {String.t(), GameMap.coord(), Entity.entity_type()}
@@ -54,7 +55,7 @@ defmodule GameserverWeb.Entities do
   @doc """
   Returns true if the entity exists in the collection.
   """
-  @spec has_entity?(t(), Ecto.UUID.t()) :: boolean()
+  @spec has_entity?(t(), UUID.t()) :: boolean()
   def has_entity?(%__MODULE__{} = entities, id) when is_binary(id) do
     Map.has_key?(entities.map, id)
   end
@@ -62,7 +63,7 @@ defmodule GameserverWeb.Entities do
   @doc """
   Returns the position of an entity.
   """
-  @spec get_position(t(), Ecto.UUID.t()) :: {:ok, GameMap.coord()} | :error
+  @spec get_position(t(), UUID.t()) :: {:ok, GameMap.coord()} | :error
   def get_position(%__MODULE__{} = entities, id) when is_binary(id) do
     case Map.get(entities.map, id) do
       {_name, pos, _type} -> {:ok, pos}
@@ -73,7 +74,7 @@ defmodule GameserverWeb.Entities do
   @doc """
   Updates an entity's position.
   """
-  @spec update_position(t(), Ecto.UUID.t(), GameMap.coord()) :: t()
+  @spec update_position(t(), UUID.t(), GameMap.coord()) :: t()
   def update_position(%__MODULE__{} = entities, id, pos) when is_binary(id) do
     %__MODULE__{
       entities
@@ -84,7 +85,7 @@ defmodule GameserverWeb.Entities do
   @doc """
   Removes an entity by id.
   """
-  @spec remove(t(), Ecto.UUID.t()) :: t()
+  @spec remove(t(), UUID.t()) :: t()
   def remove(%__MODULE__{} = entities, id) when is_binary(id) do
     %__MODULE__{entities | map: Map.delete(entities.map, id)}
   end
@@ -92,7 +93,7 @@ defmodule GameserverWeb.Entities do
   @doc """
   Returns ids of players at a given coordinate.
   """
-  @spec players_at(t(), GameMap.coord()) :: [Ecto.UUID.t()]
+  @spec players_at(t(), GameMap.coord()) :: [UUID.t()]
   def players_at(%__MODULE__{} = entities, coord) do
     for {id, {_name, pos, :user}} <- entities.map, pos == coord, do: id
   end
