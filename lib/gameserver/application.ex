@@ -15,6 +15,7 @@ defmodule Gameserver.Application do
       {DNSCluster, query: Application.get_env(:gameserver, :dns_cluster_query) || :ignore},
       {Phoenix.PubSub, name: Gameserver.PubSub},
       Gameserver.WorldServer,
+      Gameserver.MobServer,
       # Start to serve requests, typically the last entry
       GameserverWeb.Endpoint
     ]
