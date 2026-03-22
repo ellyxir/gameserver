@@ -5,6 +5,7 @@ defmodule Gameserver.EntityServer do
   use GenServer
 
   alias Gameserver.Entity
+  alias Gameserver.UUID
 
   @typedoc """
   map of entity uuids to entities
@@ -34,9 +35,40 @@ defmodule Gameserver.EntityServer do
     GenServer.call(server, {:create_entity, entity})
   end
 
+  @doc """
+  Returns an entity by id. Returns `{:ok, entity}` or `{:error, :not_found}`.
+  """
+  @spec get_entity(UUID.t(), GenServer.server()) :: {:ok, Entity.t()} | {:error, :not_found}
+  def get_entity(id, server \\ __MODULE__) when is_binary(id) do
+    GenServer.call(server, {:get_entity, id})
+  end
+
+  @doc """
+  Removes an entity by id. Returns `:ok` or `{:error, :not_found}`.
+  """
+  @spec remove_entity(UUID.t(), GenServer.server()) :: :ok | {:error, :not_found}
+  def remove_entity(id, server \\ __MODULE__) when is_binary(id) do
+    GenServer.call(server, {:remove_entity, id})
+  end
+
   # Server callbacks
 
   @impl GenServer
+  def handle_call({:get_entity, id}, _from, state) do
+    case Map.get(state, id) do
+      nil -> {:reply, {:error, :not_found}, state}
+      entity -> {:reply, {:ok, entity}, state}
+    end
+  end
+
+  def handle_call({:remove_entity, id}, _from, state) do
+    if Map.has_key?(state, id) do
+      {:reply, :ok, Map.delete(state, id)}
+    else
+      {:reply, {:error, :not_found}, state}
+    end
+  end
+
   def handle_call({:create_entity, %Entity{id: id} = entity}, _from, state) do
     if Map.has_key?(state, id) do
       {:reply, {:error, :already_exists}, state}
