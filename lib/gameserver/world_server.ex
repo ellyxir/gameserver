@@ -298,8 +298,11 @@ defmodule Gameserver.WorldServer do
     broadcast_movement({:entity_moved, id, destination})
   end
 
+  @doc """
+  Converts an entity to a world node.
+  """
   @spec world_node(Entity.t()) :: world_node()
-  defp world_node(%Entity{} = entity) do
+  def world_node(%Entity{} = entity) do
     %{pos: entity.pos, type: entity.type, name: entity.name}
   end
 

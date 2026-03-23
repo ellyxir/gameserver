@@ -9,35 +9,27 @@ defmodule GameserverWeb.Entities do
   alias Gameserver.Entity
   alias Gameserver.Map, as: GameMap
   alias Gameserver.UUID
+  alias Gameserver.WorldServer
 
   @typedoc "Tracks all entities for LiveView rendering"
   @type t() :: %__MODULE__{
-          map: %{UUID.t() => entry()}
+          map: %{UUID.t() => WorldServer.world_node()}
         }
-
-  @typep entry() :: {String.t(), GameMap.coord(), Entity.entity_type()}
 
   @doc """
   Adds world nodes from `WorldServer.world_nodes/0` format.
   """
-  @spec add_world_nodes(t(), %{
-          UUID.t() => %{name: String.t(), pos: GameMap.coord(), type: Entity.entity_type()}
-        }) :: t()
+  @spec add_world_nodes(t(), %{UUID.t() => WorldServer.world_node()}) :: t()
   def add_world_nodes(%__MODULE__{} = entities, nodes) when is_map(nodes) do
-    new_entries =
-      Map.new(nodes, fn {id, %{name: name, pos: pos, type: type}} ->
-        {id, {name, pos, type}}
-      end)
-
-    %__MODULE__{entities | map: Map.merge(entities.map, new_entries)}
+    %__MODULE__{entities | map: Map.merge(entities.map, nodes)}
   end
 
   @doc """
   Adds a single entity from a PubSub join message.
   """
   @spec add_entity(t(), Entity.t()) :: t()
-  def add_entity(%__MODULE__{} = entities, %Entity{id: id, name: name, pos: pos, type: type}) do
-    %__MODULE__{entities | map: Map.put(entities.map, id, {name, pos, type})}
+  def add_entity(%__MODULE__{} = entities, %Entity{id: id} = entity) do
+    %__MODULE__{entities | map: Map.put(entities.map, id, WorldServer.world_node(entity))}
   end
 
   @doc """
@@ -54,7 +46,7 @@ defmodule GameserverWeb.Entities do
   @spec get_position(t(), UUID.t()) :: {:ok, GameMap.coord()} | :error
   def get_position(%__MODULE__{} = entities, id) when is_binary(id) do
     case Map.get(entities.map, id) do
-      {_name, pos, _type} -> {:ok, pos}
+      %{pos: pos} -> {:ok, pos}
       nil -> :error
     end
   end
@@ -66,7 +58,7 @@ defmodule GameserverWeb.Entities do
   def update_position(%__MODULE__{} = entities, id, pos) when is_binary(id) do
     %__MODULE__{
       entities
-      | map: Map.update!(entities.map, id, fn {name, _old, type} -> {name, pos, type} end)
+      | map: Map.update!(entities.map, id, fn node -> %{node | pos: pos} end)
     }
   end
 
@@ -83,7 +75,7 @@ defmodule GameserverWeb.Entities do
   """
   @spec players_at(t(), GameMap.coord()) :: [UUID.t()]
   def players_at(%__MODULE__{} = entities, coord) do
-    for {id, {_name, pos, :user}} <- entities.map, pos == coord, do: id
+    for {id, %{type: :user, pos: pos}} <- entities.map, pos == coord, do: id
   end
 
   @doc """
@@ -93,7 +85,7 @@ defmodule GameserverWeb.Entities do
   @spec mob_symbol_at(t(), GameMap.coord()) :: String.t() | nil
   def mob_symbol_at(%__MODULE__{} = entities, coord) do
     Enum.find_value(entities.map, fn
-      {_id, {name, pos, :mob}} when pos == coord -> String.first(name)
+      {_id, %{type: :mob, name: name, pos: pos}} when pos == coord -> String.first(name)
       _ -> nil
     end)
   end
@@ -103,6 +95,6 @@ defmodule GameserverWeb.Entities do
   """
   @spec usernames(t()) :: [String.t()]
   def usernames(%__MODULE__{} = entities) do
-    for {_id, {name, _pos, :user}} <- entities.map, do: name
+    for {_id, %{type: :user, name: name}} <- entities.map, do: name
   end
 end
