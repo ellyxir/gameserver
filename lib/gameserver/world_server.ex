@@ -21,10 +21,10 @@ defmodule Gameserver.WorldServer do
 
   @typedoc "Spatial index entry for collision detection and queries"
   @type world_node() :: %{
-           pos: GameMap.coord(),
-           type: Entity.entity_type(),
-           name: String.t()
-         }
+          pos: GameMap.coord(),
+          type: Entity.entity_type(),
+          name: String.t()
+        }
 
   @typep t() :: %__MODULE__{
            entities: %{UUID.t() => world_node()},
@@ -265,20 +265,7 @@ defmodule Gameserver.WorldServer do
          {:ok, entity} <- EntityServer.get_entity(id, state.entity_server),
          :ok <- Cooldowns.check(entity.cooldowns, :move),
          {:ok, destination} <- validate_move(id, world_node, direction, state) do
-      {:ok, _updated} =
-        EntityServer.update_entity(
-          id,
-          fn e ->
-            %{
-              e
-              | pos: destination,
-                cooldowns: Cooldowns.start(e.cooldowns, :move, @move_cooldown_ms)
-            }
-          end,
-          state.entity_server
-        )
-
-      broadcast_movement({:entity_moved, id, destination})
+      :ok = apply_move(id, destination, state)
       new_entities = Map.put(entities, id, %{world_node | pos: destination})
       {:reply, {:ok, destination}, %{state | entities: new_entities}}
     else
@@ -292,6 +279,24 @@ defmodule Gameserver.WorldServer do
   end
 
   # Private helpers
+
+  @spec apply_move(UUID.t(), GameMap.coord(), t()) :: :ok
+  defp apply_move(id, destination, state) do
+    {:ok, _updated} =
+      EntityServer.update_entity(
+        id,
+        fn e ->
+          %{
+            e
+            | pos: destination,
+              cooldowns: Cooldowns.start(e.cooldowns, :move, @move_cooldown_ms)
+          }
+        end,
+        state.entity_server
+      )
+
+    broadcast_movement({:entity_moved, id, destination})
+  end
 
   @spec world_node(Entity.t()) :: world_node()
   defp world_node(%Entity{} = entity) do
