@@ -14,6 +14,7 @@ defmodule Gameserver.Application do
        repos: Application.fetch_env!(:gameserver, :ecto_repos), skip: skip_migrations?()},
       {DNSCluster, query: Application.get_env(:gameserver, :dns_cluster_query) || :ignore},
       {Phoenix.PubSub, name: Gameserver.PubSub},
+      Gameserver.EntityServer,
       Gameserver.WorldServer,
       Gameserver.MobServer,
       # Start to serve requests, typically the last entry
@@ -22,7 +23,7 @@ defmodule Gameserver.Application do
 
     # See https://hexdocs.pm/elixir/Supervisor.html
     # for other strategies and supported options
-    opts = [strategy: :one_for_one, name: Gameserver.Supervisor]
+    opts = [strategy: :one_for_all, name: Gameserver.Supervisor]
     Supervisor.start_link(children, opts)
   end
 

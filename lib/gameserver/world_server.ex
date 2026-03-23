@@ -1,21 +1,35 @@
 defmodule Gameserver.WorldServer do
   @moduledoc """
-  A named GenServer that tracks entity presence and location in the world.
+  A named GenServer that acts as a spatial index for the game world.
+
+  Validates movement (collision, walls) and maintains entity positions.
+  Entity data (stats, cooldowns, identity) is owned by EntityServer.
   """
 
   use GenServer
 
   alias Gameserver.Cooldowns
   alias Gameserver.Entity
+  alias Gameserver.EntityServer
   alias Gameserver.Map, as: GameMap
   alias Gameserver.User
   alias Gameserver.UUID
 
-  defstruct entities: %{}, map: nil
+  defstruct entities: %{},
+            map: %GameMap{width: 0, height: 0, tiles: %{}},
+            entity_server: EntityServer
+
+  # World node — spatial index entry for collision detection and queries
+  @typep world_node() :: %{
+           pos: GameMap.coord(),
+           type: Entity.entity_type(),
+           name: String.t()
+         }
 
   @typep t() :: %__MODULE__{
-           entities: %{UUID.t() => Entity.t()},
-           map: GameMap.t() | nil
+           entities: %{UUID.t() => world_node()},
+           map: GameMap.t(),
+           entity_server: GenServer.server()
          }
 
   @typedoc "Error reasons for join operations"
@@ -28,8 +42,7 @@ defmodule Gameserver.WorldServer do
   # Client API
 
   @doc """
-  Starts the WorldServer. Accepts `:name` option, defaults to module name.
-  During unit tests we start up without the name so that we can reset.
+  Starts the WorldServer. Accepts `:name` and `:entity_server` options.
   """
   @spec start_link(keyword()) :: GenServer.on_start()
   def start_link(opts \\ []) do
@@ -163,8 +176,9 @@ defmodule Gameserver.WorldServer do
   # Server callbacks
 
   @impl GenServer
-  def init(_opts) do
-    {:ok, %__MODULE__{map: GameMap.sample_dungeon()}}
+  def init(opts) do
+    entity_server = Keyword.get(opts, :entity_server, EntityServer)
+    {:ok, %__MODULE__{map: GameMap.sample_dungeon(), entity_server: entity_server}}
   end
 
   @impl GenServer
@@ -177,8 +191,9 @@ defmodule Gameserver.WorldServer do
          :ok <- check_user_constraints(entities, entity),
          {:ok, pos} <- resolve_spawn_position(entity, state) do
       entity = %{entity | pos: pos}
+      :ok = EntityServer.create_entity(entity, state.entity_server)
       broadcast_presence({:entity_joined, entity})
-      {:reply, {:ok, pos}, %{state | entities: Map.put(entities, id, entity)}}
+      {:reply, {:ok, pos}, %{state | entities: Map.put(entities, id, world_node(entity))}}
     else
       {:error, reason} -> {:reply, {:error, reason}, state}
     end
@@ -190,8 +205,9 @@ defmodule Gameserver.WorldServer do
       {nil, _entities} ->
         {:reply, {:error, :not_found}, state}
 
-      {%Entity{} = entity, remaining} ->
-        broadcast_presence({:entity_left, entity.id})
+      {_world_node, remaining} ->
+        :ok = EntityServer.remove_entity(id, state.entity_server)
+        broadcast_presence({:entity_left, id})
         {:reply, :ok, %{state | entities: remaining}}
     end
   end
@@ -200,8 +216,8 @@ defmodule Gameserver.WorldServer do
   def handle_call(:who, _from, %__MODULE__{entities: entities} = state) do
     result =
       entities
-      |> users_from_entities()
-      |> Enum.map(&entity_to_tuple/1)
+      |> Enum.filter(fn {_id, entry} -> entry.type == :user end)
+      |> Enum.map(fn {id, entry} -> {id, entry.name} end)
 
     {:reply, result, state}
   end
@@ -210,18 +226,22 @@ defmodule Gameserver.WorldServer do
   def handle_call(:players, _from, %__MODULE__{entities: entities} = state) do
     result =
       entities
-      |> users_from_entities()
-      |> Enum.map(&entity_to_user_pos/1)
+      |> Enum.filter(fn {_id, entry} -> entry.type == :user end)
+      |> Enum.map(fn {id, entry} ->
+        {:ok, user} = User.new(id: id, username: entry.name)
+        {user, entry.pos}
+      end)
 
     {:reply, result, state}
   end
 
   @impl GenServer
-  def handle_call(:mobs, _from, %__MODULE__{entities: entities} = state) do
+  def handle_call(:mobs, _from, %__MODULE__{} = state) do
     result =
-      entities
-      |> mobs_from_entities()
-      |> Enum.map(&entity_to_mob_pos/1)
+      state.entity_server
+      |> EntityServer.list_entities()
+      |> Enum.filter(fn entity -> entity.type == :mob end)
+      |> Enum.map(fn entity -> {entity, entity.pos} end)
 
     {:reply, result, state}
   end
@@ -232,7 +252,7 @@ defmodule Gameserver.WorldServer do
     result =
       Enum.flat_map(ids, fn id ->
         case Map.get(entities, id) do
-          %Entity{type: :user} = entity -> [entity_to_tuple(entity)]
+          %{type: :user, name: name} -> [{id, name}]
           _ -> []
         end
       end)
@@ -244,7 +264,7 @@ defmodule Gameserver.WorldServer do
   def handle_call({:who, id}, _from, %__MODULE__{entities: entities} = state) do
     result =
       case Map.get(entities, id) do
-        %Entity{type: :user} = entity -> [entity_to_tuple(entity)]
+        %{type: :user, name: name} -> [{id, name}]
         _ -> []
       end
 
@@ -256,7 +276,7 @@ defmodule Gameserver.WorldServer do
     result =
       case Map.get(entities, id) do
         nil -> {:error, :not_found}
-        %Entity{pos: pos} -> {:ok, pos}
+        %{pos: pos} -> {:ok, pos}
       end
 
     {:reply, result, state}
@@ -268,11 +288,26 @@ defmodule Gameserver.WorldServer do
         _from,
         %__MODULE__{entities: entities} = state
       ) do
-    with {:ok, entity} <- get_entity(entities, id),
+    with {:ok, world_node} <- get_world_node(entities, id),
+         {:ok, entity} <- EntityServer.get_entity(id, state.entity_server),
          :ok <- Cooldowns.check(entity.cooldowns, :move),
-         {:ok, updated} <- apply_move_and_notify(entity, direction, state) do
-      new_state = %{state | entities: Map.put(entities, id, updated)}
-      {:reply, {:ok, updated.pos}, new_state}
+         {:ok, destination} <- validate_move(id, world_node, direction, state) do
+      {:ok, _updated} =
+        EntityServer.update_entity(
+          id,
+          fn e ->
+            %{
+              e
+              | pos: destination,
+                cooldowns: Cooldowns.start(e.cooldowns, :move, @move_cooldown_ms)
+            }
+          end,
+          state.entity_server
+        )
+
+      broadcast_movement({:entity_moved, id, destination})
+      new_entities = Map.put(entities, id, %{world_node | pos: destination})
+      {:reply, {:ok, destination}, %{state | entities: new_entities}}
     else
       {:error, reason} -> {:reply, {:error, reason}, state}
     end
@@ -285,13 +320,18 @@ defmodule Gameserver.WorldServer do
 
   # Private helpers
 
-  @spec check_not_already_joined(%{UUID.t() => Entity.t()}, UUID.t()) ::
+  @spec world_node(Entity.t()) :: world_node()
+  defp world_node(%Entity{} = entity) do
+    %{pos: entity.pos, type: entity.type, name: entity.name}
+  end
+
+  @spec check_not_already_joined(%{UUID.t() => world_node()}, UUID.t()) ::
           :ok | {:error, :already_joined}
   defp check_not_already_joined(entities, id) do
     if Map.has_key?(entities, id), do: {:error, :already_joined}, else: :ok
   end
 
-  @spec check_user_constraints(%{UUID.t() => Entity.t()}, Entity.t()) ::
+  @spec check_user_constraints(%{UUID.t() => world_node()}, Entity.t()) ::
           :ok | {:error, :username_not_available}
   defp check_user_constraints(entities, %Entity{type: :user, name: name}) do
     if username_taken?(entities, name), do: {:error, :username_not_available}, else: :ok
@@ -315,82 +355,54 @@ defmodule Gameserver.WorldServer do
 
   defp resolve_spawn_position(_entity, %__MODULE__{map: map}), do: GameMap.get_spawn_point(map)
 
-  @spec tile_occupied?(%{UUID.t() => Entity.t()}, GameMap.coord()) :: boolean()
+  @spec tile_occupied?(%{UUID.t() => world_node()}, GameMap.coord()) :: boolean()
   defp tile_occupied?(entities, pos) do
-    Enum.any?(entities, fn {_id, entity} -> entity.pos == pos end)
+    Enum.any?(entities, fn {_id, entry} -> entry.pos == pos end)
   end
 
-  @spec get_entity(%{UUID.t() => Entity.t()}, UUID.t()) ::
-          {:ok, Entity.t()} | {:error, :not_found}
-  defp get_entity(entities, id) do
+  @spec get_world_node(%{UUID.t() => world_node()}, UUID.t()) ::
+          {:ok, world_node()} | {:error, :not_found}
+  defp get_world_node(entities, id) do
     case Map.get(entities, id) do
       nil -> {:error, :not_found}
-      %Entity{} = entity -> {:ok, entity}
+      world_node -> {:ok, world_node}
+    end
+  end
+
+  @spec validate_move(UUID.t(), world_node(), GameMap.direction(), t()) ::
+          {:ok, GameMap.coord()} | {:error, :collision}
+  defp validate_move(id, world_node, direction, %__MODULE__{map: map, entities: entities}) do
+    destination = GameMap.interpolate(world_node.pos, direction)
+
+    if GameMap.collision?(map, world_node.pos, destination) or
+         entity_collision?(id, world_node.type, destination, entities) do
+      {:error, :collision}
+    else
+      {:ok, destination}
     end
   end
 
   # Mobs block everything. Players block mobs but not other players.
-  @spec entity_collision?(Entity.t(), GameMap.coord(), %{UUID.t() => Entity.t()}) ::
-          boolean()
-  defp entity_collision?(actor, destination, entities) do
-    Enum.any?(entities, fn {id, other} ->
-      id != actor.id and other.pos == destination and blocks?(other, actor)
+  @spec entity_collision?(
+          UUID.t(),
+          Entity.entity_type(),
+          GameMap.coord(),
+          %{UUID.t() => world_node()}
+        ) :: boolean()
+  defp entity_collision?(actor_id, actor_type, destination, entities) do
+    Enum.any?(entities, fn {id, entry} ->
+      id != actor_id and entry.pos == destination and blocks?(entry.type, actor_type)
     end)
   end
 
-  @spec blocks?(Entity.t(), Entity.t()) :: boolean()
-  defp blocks?(%Entity{type: :mob}, _actor), do: true
-  defp blocks?(%Entity{type: :user}, %Entity{type: :mob}), do: true
-  defp blocks?(%Entity{type: :user}, %Entity{type: :user}), do: false
+  @spec blocks?(Entity.entity_type(), Entity.entity_type()) :: boolean()
+  defp blocks?(:mob, _actor_type), do: true
+  defp blocks?(:user, :mob), do: true
+  defp blocks?(:user, :user), do: false
 
-  @spec users_from_entities(%{UUID.t() => Entity.t()}) :: [Entity.t()]
-  defp users_from_entities(entities) do
-    entities
-    |> Map.values()
-    |> Enum.filter(&(&1.type == :user))
-  end
-
-  @spec mobs_from_entities(%{UUID.t() => Entity.t()}) :: [Entity.t()]
-  defp mobs_from_entities(entities) do
-    entities
-    |> Map.values()
-    |> Enum.filter(&(&1.type == :mob))
-  end
-
-  @spec entity_to_tuple(Entity.t()) :: {UUID.t(), String.t()}
-  defp entity_to_tuple(%Entity{id: id, name: name}), do: {id, name}
-
-  @spec entity_to_user_pos(Entity.t()) :: {User.t(), GameMap.coord()}
-  defp entity_to_user_pos(%Entity{id: id, name: name, pos: pos}) do
-    {:ok, user} = User.new(id: id, username: name)
-    {user, pos}
-  end
-
-  @spec entity_to_mob_pos(Entity.t()) :: {Entity.t(), GameMap.coord()}
-  defp entity_to_mob_pos(%Entity{pos: pos} = entity), do: {entity, pos}
-
-  @spec apply_move_and_notify(Entity.t(), GameMap.direction(), t()) ::
-          {:ok, Entity.t()} | {:error, :collision}
-  defp apply_move_and_notify(
-         %Entity{pos: pos} = entity,
-         direction,
-         %__MODULE__{map: map, entities: entities}
-       ) do
-    destination = GameMap.interpolate(pos, direction)
-
-    if GameMap.collision?(map, pos, destination) or
-         entity_collision?(entity, destination, entities) do
-      {:error, :collision}
-    else
-      broadcast_movement({:entity_moved, entity.id, destination})
-      updated_cooldowns = Cooldowns.start(entity.cooldowns, :move, @move_cooldown_ms)
-      {:ok, %{entity | pos: destination, cooldowns: updated_cooldowns}}
-    end
-  end
-
-  @spec username_taken?(%{UUID.t() => Entity.t()}, String.t()) :: boolean()
+  @spec username_taken?(%{UUID.t() => world_node()}, String.t()) :: boolean()
   defp username_taken?(entities, name) do
-    Enum.any?(entities, fn {_id, entity} -> entity.type == :user and entity.name == name end)
+    Enum.any?(entities, fn {_id, entry} -> entry.type == :user and entry.name == name end)
   end
 
   @spec broadcast_presence({:entity_joined, Entity.t()} | {:entity_left, UUID.t()}) :: :ok

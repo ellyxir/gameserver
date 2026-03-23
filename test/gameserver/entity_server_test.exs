@@ -116,10 +116,10 @@ defmodule Gameserver.EntityServerTest do
 
     test "does not broadcast on duplicate create", %{server: server} do
       entity = create_entity!(server)
-      assert_receive {:entity_created, _}
+      assert_receive {:entity_created, ^entity}
 
       {:error, :already_exists} = EntityServer.create_entity(entity, server)
-      refute_receive {:entity_created, _}
+      refute_receive {:entity_created, ^entity}
     end
 
     test "broadcasts on remove_entity", %{server: server} do
@@ -131,8 +131,9 @@ defmodule Gameserver.EntityServerTest do
     end
 
     test "does not broadcast on failed remove", %{server: server} do
-      {:error, :not_found} = EntityServer.remove_entity(UUID.generate(), server)
-      refute_receive {:entity_removed, _}
+      fake_id = UUID.generate()
+      {:error, :not_found} = EntityServer.remove_entity(fake_id, server)
+      refute_receive {:entity_removed, ^fake_id}
     end
 
     test "broadcasts on update_entity", %{server: server} do
@@ -144,10 +145,12 @@ defmodule Gameserver.EntityServerTest do
     end
 
     test "does not broadcast on failed update", %{server: server} do
-      {:error, :not_found} =
-        EntityServer.update_entity(UUID.generate(), &%{&1 | pos: {0, 0}}, server)
+      fake_id = UUID.generate()
 
-      refute_receive {:entity_updated, _}
+      {:error, :not_found} =
+        EntityServer.update_entity(fake_id, &%{&1 | pos: {0, 0}}, server)
+
+      refute_receive {:entity_updated, %{id: ^fake_id}}
     end
   end
 end

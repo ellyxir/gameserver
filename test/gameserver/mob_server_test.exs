@@ -2,12 +2,20 @@ defmodule Gameserver.MobServerTest do
   # async: false because we interact with WorldServer
   use ExUnit.Case, async: false
 
+  alias Gameserver.EntityServer
   alias Gameserver.Map, as: GameMap
   alias Gameserver.MobServer
   alias Gameserver.WorldServer
 
   setup do
-    server = start_supervised!({WorldServer, name: :"world_#{System.unique_integer()}"})
+    entity_server = start_supervised!({EntityServer, name: nil})
+
+    server =
+      start_supervised!(
+        {WorldServer, name: :"world_#{System.unique_integer()}", entity_server: entity_server},
+        id: :world_server
+      )
+
     %{server: server}
   end
 

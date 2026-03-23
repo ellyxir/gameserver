@@ -2,13 +2,21 @@ defmodule Gameserver.WorldServerTest do
   use ExUnit.Case, async: true
 
   alias Gameserver.Entity
+  alias Gameserver.EntityServer
   alias Gameserver.User
   alias Gameserver.UUID
   alias Gameserver.WorldServer
 
   setup do
-    pid = start_supervised!({WorldServer, name: nil})
-    {:ok, server: pid}
+    entity_server = start_supervised!({EntityServer, name: nil})
+
+    pid =
+      start_supervised!(
+        {WorldServer, name: nil, entity_server: entity_server},
+        id: :world_server
+      )
+
+    {:ok, server: pid, entity_server: entity_server}
   end
 
   describe "genserver lifecycle" do
@@ -70,6 +78,15 @@ defmodule Gameserver.WorldServerTest do
       fake_id = UUID.generate()
 
       assert {:error, :not_found} = WorldServer.leave(fake_id, server)
+    end
+
+    test "removes entity from entity server", %{server: server, entity_server: entity_server} do
+      {:ok, user} = User.new("alice")
+      {:ok, _position} = WorldServer.join_user(user, server)
+
+      :ok = WorldServer.leave(user.id, server)
+
+      assert {:error, :not_found} = EntityServer.get_entity(user.id, entity_server)
     end
   end
 
