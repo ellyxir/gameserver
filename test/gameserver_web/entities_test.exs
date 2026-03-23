@@ -2,40 +2,29 @@ defmodule GameserverWeb.EntitiesTest do
   use ExUnit.Case, async: true
 
   alias Gameserver.Entity
-  alias Gameserver.User
   alias GameserverWeb.Entities
 
   defp make_entities do
-    {:ok, alice} = User.new(id: "id-a", username: "alice")
-    {:ok, bob} = User.new(id: "id-b", username: "bob")
-    goblin = Entity.new(id: "id-g", name: "goblin", type: :mob, pos: {3, 2})
+    nodes = %{
+      "id-a" => %{name: "alice", pos: {1, 1}, type: :user},
+      "id-b" => %{name: "bob", pos: {2, 1}, type: :user},
+      "id-g" => %{name: "goblin", pos: {3, 2}, type: :mob}
+    }
 
-    %Entities{}
-    |> Entities.add_players([{alice, {1, 1}}, {bob, {2, 1}}])
-    |> Entities.add_mobs([{goblin, {3, 2}}])
+    Entities.add_world_nodes(%Entities{}, nodes)
   end
 
-  describe "add_players/2" do
-    test "adds players from WorldServer.players() format" do
-      {:ok, alice} = User.new(id: "id-a", username: "alice")
+  describe "add_world_nodes/2" do
+    test "adds entities from WorldServer.world_nodes() format" do
+      nodes = %{
+        "id-a" => %{name: "alice", pos: {1, 1}, type: :user},
+        "id-m" => %{name: "goblin", pos: {5, 5}, type: :mob}
+      }
 
-      entities =
-        %Entities{}
-        |> Entities.add_players([{alice, {1, 1}}])
+      entities = Entities.add_world_nodes(%Entities{}, nodes)
 
       assert Entities.has_entity?(entities, "id-a")
       assert Entities.get_position(entities, "id-a") == {:ok, {1, 1}}
-    end
-  end
-
-  describe "add_mobs/2" do
-    test "adds mobs from WorldServer.mobs() format" do
-      mob = Entity.new(id: "id-m", name: "goblin", type: :mob, pos: {5, 5})
-
-      entities =
-        %Entities{}
-        |> Entities.add_mobs([{mob, {5, 5}}])
-
       assert Entities.has_entity?(entities, "id-m")
       assert Entities.get_position(entities, "id-m") == {:ok, {5, 5}}
     end

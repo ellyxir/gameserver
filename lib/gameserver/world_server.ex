@@ -19,8 +19,8 @@ defmodule Gameserver.WorldServer do
             map: %GameMap{width: 0, height: 0, tiles: %{}},
             entity_server: EntityServer
 
-  # World node — spatial index entry for collision detection and queries
-  @typep world_node() :: %{
+  @typedoc "Spatial index entry for collision detection and queries"
+  @type world_node() :: %{
            pos: GameMap.coord(),
            type: Entity.entity_type(),
            name: String.t()
@@ -107,19 +107,11 @@ defmodule Gameserver.WorldServer do
   end
 
   @doc """
-  Returns all user-type entities as `{user, position}` tuples.
+  Returns all world nodes as a map of `%{id => world_node}`.
   """
-  @spec players(GenServer.server()) :: [{User.t(), GameMap.coord()}]
-  def players(server \\ __MODULE__) do
-    GenServer.call(server, :players)
-  end
-
-  @doc """
-  Returns all mob-type entities as `{entity, position}` tuples.
-  """
-  @spec mobs(GenServer.server()) :: [{Entity.t(), GameMap.coord()}]
-  def mobs(server \\ __MODULE__) do
-    GenServer.call(server, :mobs)
+  @spec world_nodes(GenServer.server()) :: %{UUID.t() => world_node()}
+  def world_nodes(server \\ __MODULE__) do
+    GenServer.call(server, :world_nodes)
   end
 
   @doc """
@@ -223,27 +215,8 @@ defmodule Gameserver.WorldServer do
   end
 
   @impl GenServer
-  def handle_call(:players, _from, %__MODULE__{entities: entities} = state) do
-    result =
-      entities
-      |> Enum.filter(fn {_id, entry} -> entry.type == :user end)
-      |> Enum.map(fn {id, entry} ->
-        {:ok, user} = User.new(id: id, username: entry.name)
-        {user, entry.pos}
-      end)
-
-    {:reply, result, state}
-  end
-
-  @impl GenServer
-  def handle_call(:mobs, _from, %__MODULE__{} = state) do
-    result =
-      state.entity_server
-      |> EntityServer.list_entities()
-      |> Enum.filter(fn entity -> entity.type == :mob end)
-      |> Enum.map(fn entity -> {entity, entity.pos} end)
-
-    {:reply, result, state}
+  def handle_call(:world_nodes, _from, %__MODULE__{entities: entities} = state) do
+    {:reply, entities, state}
   end
 
   @impl GenServer

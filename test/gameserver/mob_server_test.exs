@@ -19,14 +19,20 @@ defmodule Gameserver.MobServerTest do
     %{server: server}
   end
 
+  defp mob_nodes(server) do
+    server
+    |> WorldServer.world_nodes()
+    |> Enum.filter(fn {_id, node} -> node.type == :mob end)
+  end
+
   describe "start_link/1" do
     test "spawns mobs into the world", %{server: server} do
       start_supervised!({MobServer, world_server: server})
 
-      mobs = WorldServer.mobs(server)
+      mobs = mob_nodes(server)
       assert length(mobs) == 3
 
-      names = mobs |> Enum.map(fn {entity, _pos} -> entity.name end) |> Enum.sort()
+      names = mobs |> Enum.map(fn {_id, node} -> node.name end) |> Enum.sort()
       assert names == ["goblin", "rat", "spider"]
     end
 
@@ -34,11 +40,10 @@ defmodule Gameserver.MobServerTest do
       start_supervised!({MobServer, world_server: server})
 
       map = WorldServer.get_map(server)
-      mobs = WorldServer.mobs(server)
 
-      Enum.each(mobs, fn {entity, pos} ->
-        assert {:ok, :floor} == GameMap.get_tile(map, pos),
-               "expected #{entity.name} at #{inspect(pos)} to be on a floor tile"
+      Enum.each(mob_nodes(server), fn {_id, node} ->
+        assert {:ok, :floor} == GameMap.get_tile(map, node.pos),
+               "expected #{node.name} at #{inspect(node.pos)} to be on a floor tile"
       end)
     end
 
@@ -48,8 +53,7 @@ defmodule Gameserver.MobServerTest do
       {:ok, user} = Gameserver.User.new("hero")
       {:ok, _pos} = WorldServer.join_user(user, server)
 
-      mobs = WorldServer.mobs(server)
-      assert length(mobs) == 3
+      assert length(mob_nodes(server)) == 3
     end
   end
 end

@@ -8,7 +8,6 @@ defmodule GameserverWeb.Entities do
 
   alias Gameserver.Entity
   alias Gameserver.Map, as: GameMap
-  alias Gameserver.User
   alias Gameserver.UUID
 
   @typedoc "Tracks all entities for LiveView rendering"
@@ -19,26 +18,15 @@ defmodule GameserverWeb.Entities do
   @typep entry() :: {String.t(), GameMap.coord(), Entity.entity_type()}
 
   @doc """
-  Adds players to the collection from `WorldServer.players/0` format.
+  Adds world nodes from `WorldServer.world_nodes/0` format.
   """
-  @spec add_players(t(), [{User.t(), GameMap.coord()}]) :: t()
-  def add_players(%__MODULE__{} = entities, players_list) when is_list(players_list) do
+  @spec add_world_nodes(t(), %{
+          UUID.t() => %{name: String.t(), pos: GameMap.coord(), type: Entity.entity_type()}
+        }) :: t()
+  def add_world_nodes(%__MODULE__{} = entities, nodes) when is_map(nodes) do
     new_entries =
-      Map.new(players_list, fn {%User{id: id, username: uname}, pos} ->
-        {id, {uname, pos, :user}}
-      end)
-
-    %__MODULE__{entities | map: Map.merge(entities.map, new_entries)}
-  end
-
-  @doc """
-  Adds mobs to the collection from `WorldServer.mobs/0` format.
-  """
-  @spec add_mobs(t(), [{Entity.t(), GameMap.coord()}]) :: t()
-  def add_mobs(%__MODULE__{} = entities, mobs_list) when is_list(mobs_list) do
-    new_entries =
-      Map.new(mobs_list, fn {%Entity{id: id, name: name}, pos} ->
-        {id, {name, pos, :mob}}
+      Map.new(nodes, fn {id, %{name: name, pos: pos, type: type}} ->
+        {id, {name, pos, type}}
       end)
 
     %__MODULE__{entities | map: Map.merge(entities.map, new_entries)}
