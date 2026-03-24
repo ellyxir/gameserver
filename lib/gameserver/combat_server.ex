@@ -14,10 +14,11 @@ defmodule Gameserver.CombatServer do
   alias Gameserver.UUID
   alias Gameserver.WorldServer
 
-  @typep t() :: %__MODULE__{
-           entity_server: GenServer.server(),
-           world_server: GenServer.server()
-         }
+  @typedoc "CombatServer state"
+  @type t() :: %__MODULE__{
+          entity_server: GenServer.server(),
+          world_server: GenServer.server()
+        }
 
   defstruct entity_server: EntityServer,
             world_server: WorldServer
