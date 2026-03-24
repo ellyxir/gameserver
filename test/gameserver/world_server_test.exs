@@ -473,7 +473,6 @@ defmodule Gameserver.WorldServerTest do
       # mob at {2,1}, user at {1,1} — mob moves west into player
       mob = Entity.new(name: "goblin", type: :mob, pos: {2, 1})
       {:ok, _pos} = WorldServer.join_entity(mob, server)
-      Process.sleep(WorldServer.move_cooldown_ms() + 1)
 
       assert {:error, :collision} = WorldServer.move(mob.id, :west, server)
     end
@@ -483,7 +482,6 @@ defmodule Gameserver.WorldServerTest do
       mob2 = Entity.new(name: "spider", type: :mob, pos: {3, 1})
       {:ok, _pos} = WorldServer.join_entity(mob1, server)
       {:ok, _pos} = WorldServer.join_entity(mob2, server)
-      Process.sleep(WorldServer.move_cooldown_ms() + 1)
 
       assert {:error, :collision} = WorldServer.move(mob1.id, :east, server)
     end
