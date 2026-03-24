@@ -70,6 +70,24 @@ defmodule Gameserver.CombatServerTest do
                CombatServer.attack(user.id, mob.id, ctx.combat_server)
     end
 
+    test "broadcasts entity_updated with reduced hp", ctx do
+      Phoenix.PubSub.subscribe(Gameserver.PubSub, EntityServer.entity_topic())
+      {:ok, user} = User.new("alice")
+      {:ok, _pos} = WorldServer.join_user(user, ctx.world_server)
+      mob = Entity.new(name: "goblin", type: :mob, pos: {2, 1})
+      {:ok, _pos} = WorldServer.join_entity(mob, ctx.world_server)
+
+      # drain join broadcasts
+      assert_receive {:entity_created, _}
+      assert_receive {:entity_created, _}
+
+      {:ok, _} = CombatServer.attack(user.id, mob.id, ctx.combat_server)
+
+      assert_receive {:entity_updated, updated_mob}
+      assert updated_mob.id == mob.id
+      assert updated_mob.stats.hp < updated_mob.stats.max_hp
+    end
+
     test "returns out_of_range when entities are not adjacent", ctx do
       {:ok, user} = User.new("alice")
       {:ok, _pos} = WorldServer.join_user(user, ctx.world_server)
