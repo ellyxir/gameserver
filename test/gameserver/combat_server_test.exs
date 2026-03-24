@@ -97,5 +97,33 @@ defmodule Gameserver.CombatServerTest do
 
       assert {:error, :out_of_range} = CombatServer.attack(user.id, mob.id, ctx.combat_server)
     end
+
+    test "does not broadcast combat event on failed attack", ctx do
+      Phoenix.PubSub.subscribe(Gameserver.PubSub, CombatServer.combat_topic())
+      {:ok, user} = User.new("alice")
+      {:ok, _pos} = WorldServer.join_user(user, ctx.world_server)
+      fake_id = UUID.generate()
+
+      {:error, :not_found} = CombatServer.attack(user.id, fake_id, ctx.combat_server)
+      refute_receive {:combat_event, _}
+    end
+
+    test "broadcasts combat event on successful attack", ctx do
+      Phoenix.PubSub.subscribe(Gameserver.PubSub, CombatServer.combat_topic())
+      {:ok, user} = User.new("alice")
+      {:ok, _pos} = WorldServer.join_user(user, ctx.world_server)
+      mob = Entity.new(name: "goblin", type: :mob, pos: {2, 1})
+      {:ok, _pos} = WorldServer.join_entity(mob, ctx.world_server)
+
+      {:ok, _} = CombatServer.attack(user.id, mob.id, ctx.combat_server)
+
+      {:ok, attacker} = EntityServer.get_entity(user.id, ctx.entity_server)
+
+      assert_receive {:combat_event, event}
+      assert event.attacker_id == user.id
+      assert event.defender_id == mob.id
+      assert event.damage == attacker.stats.attack_power
+      assert event.defender_hp == mob.stats.hp - attacker.stats.attack_power
+    end
   end
 end
