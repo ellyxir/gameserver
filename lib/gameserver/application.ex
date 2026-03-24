@@ -17,6 +17,7 @@ defmodule Gameserver.Application do
       Gameserver.EntityServer,
       Gameserver.WorldServer,
       Gameserver.MobServer,
+      Gameserver.CombatServer,
       # Start to serve requests, typically the last entry
       GameserverWeb.Endpoint
     ]
