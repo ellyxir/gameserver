@@ -202,7 +202,7 @@ defmodule Gameserver.WorldServerTest do
       {:ok, _spawn} = WorldServer.join_user(user, server)
 
       # spawn is {1,1}, moving north hits wall at {1,0}
-      assert {:error, :collision} = WorldServer.move(user.id, :north, server)
+      assert {:error, {:collision, {1, 0}, :wall}} = WorldServer.move(user.id, :north, server)
     end
 
     test "returns error for unknown player", %{server: server} do
@@ -310,7 +310,7 @@ defmodule Gameserver.WorldServerTest do
       {:ok, alice} = User.new("alice")
       {:ok, _position} = WorldServer.join_user(alice, server)
 
-      {:error, :collision} = WorldServer.move(alice.id, :north, server)
+      {:error, {:collision, _, _}} = WorldServer.move(alice.id, :north, server)
 
       refute_receive {:entity_moved, _, _}
     end
@@ -463,8 +463,10 @@ defmodule Gameserver.WorldServerTest do
       # user at {1,1}, place mob at {2,1} (east of spawn)
       mob = Entity.new(name: "goblin", type: :mob, pos: {2, 1})
       {:ok, _pos} = WorldServer.join_entity(mob, server)
+      mob_id = mob.id
 
-      assert {:error, :collision} = WorldServer.move(user.id, :east, server)
+      assert {:error, {:collision, {2, 1}, {:mob, ^mob_id}}} =
+               WorldServer.move(user.id, :east, server)
     end
 
     test "mob cannot walk onto a player's tile", %{server: server} do
@@ -473,9 +475,10 @@ defmodule Gameserver.WorldServerTest do
       # mob at {2,1}, user at {1,1} — mob moves west into player
       mob = Entity.new(name: "goblin", type: :mob, pos: {2, 1})
       {:ok, _pos} = WorldServer.join_entity(mob, server)
-      Process.sleep(WorldServer.move_cooldown_ms() + 1)
+      user_id = user.id
 
-      assert {:error, :collision} = WorldServer.move(mob.id, :west, server)
+      assert {:error, {:collision, {1, 1}, {:user, ^user_id}}} =
+               WorldServer.move(mob.id, :west, server)
     end
 
     test "mob cannot walk onto another mob's tile", %{server: server} do
@@ -483,9 +486,10 @@ defmodule Gameserver.WorldServerTest do
       mob2 = Entity.new(name: "spider", type: :mob, pos: {3, 1})
       {:ok, _pos} = WorldServer.join_entity(mob1, server)
       {:ok, _pos} = WorldServer.join_entity(mob2, server)
-      Process.sleep(WorldServer.move_cooldown_ms() + 1)
+      mob2_id = mob2.id
 
-      assert {:error, :collision} = WorldServer.move(mob1.id, :east, server)
+      assert {:error, {:collision, {3, 1}, {:mob, ^mob2_id}}} =
+               WorldServer.move(mob1.id, :east, server)
     end
 
     test "players can stack on each other", %{server: server} do
@@ -515,7 +519,7 @@ defmodule Gameserver.WorldServerTest do
       mob = Entity.new(name: "goblin", type: :mob, pos: {2, 1})
       {:ok, _pos} = WorldServer.join_entity(mob, server)
 
-      {:error, :collision} = WorldServer.move(user.id, :east, server)
+      {:error, {:collision, _, _}} = WorldServer.move(user.id, :east, server)
 
       refute_receive {:entity_moved, _, _}
     end

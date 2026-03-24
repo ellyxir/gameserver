@@ -15,6 +15,9 @@ defmodule Gameserver.Cooldowns do
 
   @typep timer() :: {started_at :: integer(), duration_ms()}
 
+  @typedoc "A single cooldown: its name and duration"
+  @type cooldown() :: {id(), duration_ms()}
+
   @typedoc "A collection of named cooldown timers"
   @type t() :: %__MODULE__{
           timers: %{id() => timer()}

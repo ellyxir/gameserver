@@ -7,6 +7,7 @@ defmodule GameserverWeb.WorldLive do
 
   use GameserverWeb, :live_view
 
+  alias Gameserver.CombatServer
   alias Gameserver.Entity
   alias Gameserver.Map, as: GameMap
   alias Gameserver.WorldServer
@@ -88,8 +89,14 @@ defmodule GameserverWeb.WorldLive do
   @spec move_player(Phoenix.LiveView.Socket.t(), GameMap.direction()) ::
           {:noreply, Phoenix.LiveView.Socket.t()}
   defp move_player(socket, direction) do
-    WorldServer.move(socket.assigns.user_id, direction)
-    {:noreply, socket}
+    case WorldServer.move(socket.assigns.user_id, direction) do
+      {:error, {:collision, _pos, {:mob, mob_id}}} ->
+        CombatServer.attack(socket.assigns.user_id, mob_id)
+        {:noreply, socket}
+
+      _ ->
+        {:noreply, socket}
+    end
   end
 
   @impl Phoenix.LiveView
