@@ -32,6 +32,9 @@ defmodule Gameserver.WorldServer do
            entity_server: GenServer.server()
          }
 
+  @typedoc "what blocked a move — wall, mob, or user at the destination"
+  @type obstacle() :: :wall | {:mob, UUID.t()} | {:user, UUID.t()}
+
   @typedoc "Error reasons for join operations"
   @type join_error() :: :already_joined | :username_not_available | :no_spawn_point | :collision
 
@@ -127,12 +130,13 @@ defmodule Gameserver.WorldServer do
   Moves an entity one step in the given direction.
 
   Returns `{:ok, new_position}` on success,
-    `{:error, :collision}` if the destination is blocked,
+    `{:error, {:collision, destination, obstacle}}` if the destination is blocked,
     `{:error, :cooldown}` if the entity moved too recently,
     `{:error, :not_found}` if the entity is not in the world.
   """
   @spec move(UUID.t(), GameMap.direction(), GenServer.server()) ::
-          {:ok, GameMap.coord()} | {:error, :not_found | :collision | :cooldown}
+          {:ok, GameMap.coord()}
+          | {:error, :not_found | :cooldown | {:collision, GameMap.coord(), obstacle()}}
   def move(id, direction, server \\ __MODULE__) when is_binary(id) do
     GenServer.call(server, {:move, id, direction})
   end
@@ -351,27 +355,32 @@ defmodule Gameserver.WorldServer do
   end
 
   @spec validate_move(UUID.t(), world_node(), GameMap.direction(), t()) ::
-          {:ok, GameMap.coord()} | {:error, :collision}
+          {:ok, GameMap.coord()} | {:error, {:collision, GameMap.coord(), obstacle()}}
   defp validate_move(id, world_node, direction, %__MODULE__{map: map, entities: entities}) do
     destination = GameMap.interpolate(world_node.pos, direction)
 
-    if GameMap.collision?(map, world_node.pos, destination) or
-         entity_collision?(id, world_node.type, destination, entities) do
-      {:error, :collision}
-    else
-      {:ok, destination}
+    cond do
+      GameMap.collision?(map, world_node.pos, destination) ->
+        {:error, {:collision, destination, :wall}}
+
+      blocking = find_blocking_entity(id, world_node.type, destination, entities) ->
+        {blocking_id, blocking_entry} = blocking
+        {:error, {:collision, destination, {blocking_entry.type, blocking_id}}}
+
+      true ->
+        {:ok, destination}
     end
   end
 
   # Mobs block everything. Players block mobs but not other players.
-  @spec entity_collision?(
+  @spec find_blocking_entity(
           UUID.t(),
           Entity.entity_type(),
           GameMap.coord(),
           %{UUID.t() => world_node()}
-        ) :: boolean()
-  defp entity_collision?(actor_id, actor_type, destination, entities) do
-    Enum.any?(entities, fn {id, entry} ->
+        ) :: {UUID.t(), world_node()} | nil
+  defp find_blocking_entity(actor_id, actor_type, destination, entities) do
+    Enum.find(entities, fn {id, entry} ->
       id != actor_id and entry.pos == destination and blocks?(entry.type, actor_type)
     end)
   end
