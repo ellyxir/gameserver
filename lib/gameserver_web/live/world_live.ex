@@ -23,15 +23,11 @@ defmodule GameserverWeb.WorldLive do
           Phoenix.PubSub.subscribe(Gameserver.PubSub, WorldServer.movement_topic())
         end
 
-        all_players = WorldServer.players()
-
-        entities =
-          %Entities{}
-          |> Entities.add_players(all_players)
+        nodes = WorldServer.world_nodes()
+        entities = Entities.add_world_nodes(%Entities{}, nodes)
 
         if Entities.has_entity?(entities, user_id) do
           map_cells = WorldServer.get_map() |> GameMap.to_cells()
-          entities = Entities.add_mobs(entities, WorldServer.mobs())
 
           {:ok,
            assign(socket,

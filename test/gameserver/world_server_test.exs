@@ -2,13 +2,21 @@ defmodule Gameserver.WorldServerTest do
   use ExUnit.Case, async: true
 
   alias Gameserver.Entity
+  alias Gameserver.EntityServer
   alias Gameserver.User
   alias Gameserver.UUID
   alias Gameserver.WorldServer
 
   setup do
-    pid = start_supervised!({WorldServer, name: nil})
-    {:ok, server: pid}
+    entity_server = start_supervised!({EntityServer, name: nil})
+
+    pid =
+      start_supervised!(
+        {WorldServer, name: nil, entity_server: entity_server},
+        id: :world_server
+      )
+
+    {:ok, server: pid, entity_server: entity_server}
   end
 
   describe "genserver lifecycle" do
@@ -70,6 +78,15 @@ defmodule Gameserver.WorldServerTest do
       fake_id = UUID.generate()
 
       assert {:error, :not_found} = WorldServer.leave(fake_id, server)
+    end
+
+    test "removes entity from entity server", %{server: server, entity_server: entity_server} do
+      {:ok, user} = User.new("alice")
+      {:ok, _position} = WorldServer.join_user(user, server)
+
+      :ok = WorldServer.leave(user.id, server)
+
+      assert {:error, :not_found} = EntityServer.get_entity(user.id, entity_server)
     end
   end
 
@@ -145,61 +162,22 @@ defmodule Gameserver.WorldServerTest do
     end
   end
 
-  describe "players/1" do
-    test "returns empty list when no players", %{server: server} do
-      assert [] = WorldServer.players(server)
+  describe "world_nodes/1" do
+    test "returns empty map when no entities", %{server: server} do
+      assert %{} = WorldServer.world_nodes(server)
     end
 
-    test "returns all players with positions", %{server: server} do
+    test "returns all entities keyed by id", %{server: server} do
       {:ok, alice} = User.new("alice")
-      {:ok, bob} = User.new("bob")
       {:ok, alice_pos} = WorldServer.join_user(alice, server)
-      {:ok, bob_pos} = WorldServer.join_user(bob, server)
-
-      result = WorldServer.players(server)
-
-      assert length(result) == 2
-      assert {alice, alice_pos} in result
-      assert {bob, bob_pos} in result
-    end
-  end
-
-  describe "mobs/1" do
-    test "returns empty list when no mobs", %{server: server} do
-      assert [] = WorldServer.mobs(server)
-    end
-
-    test "returns all mobs with positions", %{server: server} do
-      goblin = Entity.new(name: "goblin", type: :mob, pos: {3, 2})
-      spider = Entity.new(name: "spider", type: :mob, pos: {11, 2})
-      {:ok, _pos} = WorldServer.join_entity(goblin, server)
-      {:ok, _pos} = WorldServer.join_entity(spider, server)
-
-      result = WorldServer.mobs(server)
-      ids = Enum.map(result, fn {entity, _pos} -> entity.id end)
-
-      assert length(result) == 2
-      assert goblin.id in ids
-      assert spider.id in ids
-    end
-
-    test "does not include users", %{server: server} do
-      {:ok, user} = User.new("alice")
-      {:ok, _pos} = WorldServer.join_user(user, server)
       mob = Entity.new(name: "goblin", type: :mob, pos: {3, 2})
-      {:ok, _pos} = WorldServer.join_entity(mob, server)
+      {:ok, mob_pos} = WorldServer.join_entity(mob, server)
 
-      result = WorldServer.mobs(server)
+      nodes = WorldServer.world_nodes(server)
 
-      assert [{entity, {3, 2}}] = result
-      assert entity.id == mob.id
-    end
-
-    test "returns empty list when only users exist", %{server: server} do
-      {:ok, user} = User.new("alice")
-      {:ok, _pos} = WorldServer.join_user(user, server)
-
-      assert [] = WorldServer.mobs(server)
+      assert map_size(nodes) == 2
+      assert %{pos: ^alice_pos, type: :user, name: "alice"} = nodes[alice.id]
+      assert %{pos: ^mob_pos, type: :mob, name: "goblin"} = nodes[mob.id]
     end
   end
 
@@ -379,13 +357,6 @@ defmodule Gameserver.WorldServerTest do
       {:ok, _pos} = WorldServer.join_entity(mob, server)
 
       assert [] = WorldServer.who(server)
-    end
-
-    test "mob does not appear in players/1", %{server: server} do
-      mob = Entity.new(name: "goblin", type: :mob)
-      {:ok, _pos} = WorldServer.join_entity(mob, server)
-
-      assert [] = WorldServer.players(server)
     end
 
     test "enforces username uniqueness for user entities", %{server: server} do
