@@ -258,6 +258,66 @@ defmodule GameserverWeb.WorldLiveTest do
     end
   end
 
+  describe "combat log" do
+    test "shows message when player attacks mob", %{conn: conn} do
+      {:ok, user} = User.new("fighter")
+      {:ok, _pos} = WorldServer.join_user(user)
+
+      alias Gameserver.{CombatServer, Entity}
+      mob = Entity.new(name: "goblin", type: :mob, pos: {10, 2})
+      {:ok, _pos} = WorldServer.join_entity(mob)
+
+      {:ok, view, _html} = live(conn, ~p"/world?user_id=#{user.id}")
+
+      Phoenix.PubSub.broadcast!(
+        Gameserver.PubSub,
+        CombatServer.combat_topic(),
+        {:combat_event, %{attacker_id: user.id, defender_id: mob.id, damage: 1, defender_hp: 9}}
+      )
+
+      assert has_element?(view, "#combat-log")
+      assert render(view) =~ "You hit goblin for 1 (9 hp)"
+    end
+
+    test "shows message when mob attacks player", %{conn: conn} do
+      {:ok, user} = User.new("defender")
+      {:ok, _pos} = WorldServer.join_user(user)
+
+      alias Gameserver.{CombatServer, Entity}
+      mob = Entity.new(name: "spider", type: :mob, pos: {10, 3})
+      {:ok, _pos} = WorldServer.join_entity(mob)
+
+      {:ok, view, _html} = live(conn, ~p"/world?user_id=#{user.id}")
+
+      Phoenix.PubSub.broadcast!(
+        Gameserver.PubSub,
+        CombatServer.combat_topic(),
+        {:combat_event, %{attacker_id: mob.id, defender_id: user.id, damage: 2, defender_hp: 8}}
+      )
+
+      assert render(view) =~ "spider hits you for 2 (8 hp)"
+    end
+
+    test "shows kill message when defender hp reaches zero", %{conn: conn} do
+      {:ok, user} = User.new("slayer")
+      {:ok, _pos} = WorldServer.join_user(user)
+
+      alias Gameserver.{CombatServer, Entity}
+      mob = Entity.new(name: "rat", type: :mob, pos: {13, 2})
+      {:ok, _pos} = WorldServer.join_entity(mob)
+
+      {:ok, view, _html} = live(conn, ~p"/world?user_id=#{user.id}")
+
+      Phoenix.PubSub.broadcast!(
+        Gameserver.PubSub,
+        CombatServer.combat_topic(),
+        {:combat_event, %{attacker_id: user.id, defender_id: mob.id, damage: 1, defender_hp: 0}}
+      )
+
+      assert render(view) =~ "You killed rat!"
+    end
+  end
+
   describe "tile click input" do
     test "clicking adjacent tile moves the player", %{conn: conn} do
       {:ok, user} = User.new("tapper")

@@ -10,6 +10,7 @@ defmodule GameserverWeb.WorldLive do
   alias Gameserver.CombatServer
   alias Gameserver.Entity
   alias Gameserver.Map, as: GameMap
+  alias Gameserver.UUID
   alias Gameserver.WorldServer
   alias GameserverWeb.Entities
 
@@ -22,6 +23,7 @@ defmodule GameserverWeb.WorldLive do
         if connected?(socket) do
           Phoenix.PubSub.subscribe(Gameserver.PubSub, WorldServer.presence_topic())
           Phoenix.PubSub.subscribe(Gameserver.PubSub, WorldServer.movement_topic())
+          Phoenix.PubSub.subscribe(Gameserver.PubSub, CombatServer.combat_topic())
         end
 
         nodes = WorldServer.world_nodes()
@@ -31,12 +33,14 @@ defmodule GameserverWeb.WorldLive do
           map_cells = WorldServer.get_map() |> GameMap.to_cells()
 
           {:ok,
-           assign(socket,
+           socket
+           |> assign(
              user_id: user_id,
              username: username,
              map_cells: map_cells,
              entities: entities
-           )}
+           )
+           |> stream(:combat_log, [])}
         else
           {:ok, push_navigate(socket, to: ~p"/game")}
         end
@@ -115,6 +119,12 @@ defmodule GameserverWeb.WorldLive do
     end
   end
 
+  def handle_info({:combat_event, event}, socket) do
+    message = format_combat_message(event, socket.assigns)
+    entry = %{id: UUID.generate(), message: message}
+    {:noreply, stream_insert(socket, :combat_log, entry)}
+  end
+
   def handle_info({:entity_left, id}, socket) do
     if id == socket.assigns.user_id do
       {:noreply, push_navigate(socket, to: ~p"/game")}
@@ -141,6 +151,40 @@ defmodule GameserverWeb.WorldLive do
   defp my_position(%{user_id: user_id, entities: entities}) do
     {:ok, position} = Entities.get_position(entities, user_id)
     position
+  end
+
+  @spec format_combat_message(CombatServer.combat_event(), map()) :: String.t()
+  defp format_combat_message(event, assigns) do
+    attacker_name = entity_name(assigns, event.attacker_id)
+    defender_name = entity_name(assigns, event.defender_id)
+
+    cond do
+      event.defender_hp == 0 and event.attacker_id == assigns.user_id ->
+        "You killed #{defender_name}!"
+
+      event.defender_hp == 0 and event.defender_id == assigns.user_id ->
+        "#{attacker_name} killed you!"
+
+      event.defender_hp == 0 ->
+        "#{attacker_name} killed #{defender_name}!"
+
+      event.attacker_id == assigns.user_id ->
+        "You hit #{defender_name} for #{event.damage} (#{event.defender_hp} hp)"
+
+      event.defender_id == assigns.user_id ->
+        "#{attacker_name} hits you for #{event.damage} (#{event.defender_hp} hp)"
+
+      true ->
+        "#{attacker_name} hits #{defender_name} for #{event.damage} (#{event.defender_hp} hp)"
+    end
+  end
+
+  @spec entity_name(map(), UUID.t()) :: String.t()
+  defp entity_name(assigns, id) do
+    case Entities.get_name(assigns.entities, id) do
+      {:ok, name} -> name
+      {:error, :not_found} -> "unknown"
+    end
   end
 
   @spec validate_user(String.t() | nil) :: {:ok, String.t()} | :error

@@ -43,11 +43,11 @@ defmodule GameserverWeb.Entities do
   @doc """
   Returns the position of an entity.
   """
-  @spec get_position(t(), UUID.t()) :: {:ok, GameMap.coord()} | :error
+  @spec get_position(t(), UUID.t()) :: {:ok, GameMap.coord()} | {:error, :not_found}
   def get_position(%__MODULE__{} = entities, id) when is_binary(id) do
     case Map.get(entities.map, id) do
       %{pos: pos} -> {:ok, pos}
-      nil -> :error
+      nil -> {:error, :not_found}
     end
   end
 
@@ -88,6 +88,17 @@ defmodule GameserverWeb.Entities do
       {_id, %{type: :mob, name: name, pos: pos}} when pos == coord -> String.first(name)
       _ -> nil
     end)
+  end
+
+  @doc """
+  Returns the name of an entity by id.
+  """
+  @spec get_name(t(), UUID.t()) :: {:ok, String.t()} | {:error, :not_found}
+  def get_name(%__MODULE__{} = entities, id) when is_binary(id) do
+    case Map.get(entities.map, id) do
+      %{name: name} -> {:ok, name}
+      nil -> {:error, :not_found}
+    end
   end
 
   @doc """
