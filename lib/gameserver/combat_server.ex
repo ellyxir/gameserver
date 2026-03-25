@@ -10,6 +10,7 @@ defmodule Gameserver.CombatServer do
   use GenServer
 
   alias Gameserver.Cooldowns
+  alias Gameserver.Entity
   alias Gameserver.EntityServer
   alias Gameserver.UUID
   alias Gameserver.WorldServer
@@ -18,6 +19,14 @@ defmodule Gameserver.CombatServer do
   @type t() :: %__MODULE__{
           entity_server: GenServer.server(),
           world_server: GenServer.server()
+        }
+
+  @typedoc "A broadcast combat event with attacker/defender IDs and damage dealt"
+  @type combat_event() :: %{
+          attacker_id: UUID.t(),
+          defender_id: UUID.t(),
+          damage: non_neg_integer(),
+          defender_hp: non_neg_integer()
         }
 
   defstruct entity_server: EntityServer,
@@ -33,6 +42,11 @@ defmodule Gameserver.CombatServer do
   end
 
   @attack_cooldown_ms 1000
+  @combat_topic "combat:events"
+
+  @doc "Returns the PubSub topic for combat event broadcasts."
+  @spec combat_topic() :: String.t()
+  def combat_topic, do: @combat_topic
 
   @doc """
   Attacks defender with attacker. Validates adjacency, applies damage.
@@ -61,21 +75,36 @@ defmodule Gameserver.CombatServer do
         %__MODULE__{entity_server: entity_server, world_server: world_server} = state
       ) do
     with {:ok, attacker} <- EntityServer.get_entity(attacker_id, entity_server),
-         {:ok, _defender} <- EntityServer.get_entity(defender_id, entity_server),
+         {:ok, defender} <- EntityServer.get_entity(defender_id, entity_server),
          :ok <- check_adjacent(attacker_id, defender_id, world_server) do
       damage = attacker.stats.attack_power
 
-      {:ok, _updated} =
+      {:ok, updated} =
         EntityServer.update_entity(
           defender_id,
           fn e -> %{e | stats: %{e.stats | hp: max(0, e.stats.hp - damage)}} end,
           entity_server
         )
 
+      broadcast_combat_event(attacker, defender, damage, updated.stats.hp)
+
       {:reply, {:ok, {:attack, @attack_cooldown_ms}}, state}
     else
       {:error, reason} -> {:reply, {:error, reason}, state}
     end
+  end
+
+  @spec broadcast_combat_event(Entity.t(), Entity.t(), non_neg_integer(), non_neg_integer()) ::
+          :ok
+  defp broadcast_combat_event(attacker, defender, damage, defender_hp) do
+    event = %{
+      attacker_id: attacker.id,
+      defender_id: defender.id,
+      damage: damage,
+      defender_hp: defender_hp
+    }
+
+    Phoenix.PubSub.broadcast(Gameserver.PubSub, @combat_topic, {:combat_event, event})
   end
 
   @spec check_adjacent(UUID.t(), UUID.t(), GenServer.server()) ::

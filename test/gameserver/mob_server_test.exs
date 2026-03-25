@@ -25,9 +25,17 @@ defmodule Gameserver.MobServerTest do
     |> Enum.filter(fn {_id, node} -> node.type == :mob end)
   end
 
+  defp wait_for_mobs(n) do
+    for _ <- 1..n do
+      assert_receive {:entity_joined, _}, 1000
+    end
+  end
+
   describe "start_link/1" do
     test "spawns mobs into the world", %{server: server} do
+      Phoenix.PubSub.subscribe(Gameserver.PubSub, WorldServer.presence_topic())
       start_supervised!({MobServer, world_server: server})
+      wait_for_mobs(3)
 
       mobs = mob_nodes(server)
       assert length(mobs) == 3
@@ -37,7 +45,9 @@ defmodule Gameserver.MobServerTest do
     end
 
     test "places mobs on floor tiles", %{server: server} do
+      Phoenix.PubSub.subscribe(Gameserver.PubSub, WorldServer.presence_topic())
       start_supervised!({MobServer, world_server: server})
+      wait_for_mobs(3)
 
       map = WorldServer.get_map(server)
 
@@ -48,7 +58,9 @@ defmodule Gameserver.MobServerTest do
     end
 
     test "mobs are visible to players who join after", %{server: server} do
+      Phoenix.PubSub.subscribe(Gameserver.PubSub, WorldServer.presence_topic())
       start_supervised!({MobServer, world_server: server})
+      wait_for_mobs(3)
 
       {:ok, user} = Gameserver.User.new("hero")
       {:ok, _pos} = WorldServer.join_user(user, server)

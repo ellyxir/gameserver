@@ -16,6 +16,7 @@ defmodule Gameserver.Application do
       {Phoenix.PubSub, name: Gameserver.PubSub},
       Gameserver.EntityServer,
       Gameserver.WorldServer,
+      {Registry, keys: :unique, name: Gameserver.ProcessRegistry},
       Gameserver.MobServer,
       Gameserver.CombatServer,
       # Start to serve requests, typically the last entry
