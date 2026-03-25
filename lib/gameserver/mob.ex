@@ -15,6 +15,8 @@ defmodule Gameserver.Mob do
     :id,
     :name,
     :spawn_pos,
+    :aggro_target,
+    :attack_timer,
     combat_server: CombatServer,
     world_server: WorldServer
   ]
@@ -24,6 +26,8 @@ defmodule Gameserver.Mob do
           id: UUID.t(),
           name: String.t(),
           spawn_pos: GameMap.coord(),
+          aggro_target: UUID.t() | nil,
+          attack_timer: reference() | nil,
           combat_server: GenServer.server(),
           world_server: GenServer.server()
         }
@@ -53,6 +57,31 @@ defmodule Gameserver.Mob do
     entity = Gameserver.Entity.new(state)
     {:ok, _pos} = WorldServer.join_entity(entity, state.world_server)
     {:noreply, state}
+  end
+
+  @attack_interval_ms 2000
+
+  @impl GenServer
+  def handle_info(
+        {:combat_event, %{defender_id: my_id, attacker_id: attacker_id}},
+        %{id: my_id} = state
+      ) do
+    timer =
+      state.attack_timer || Process.send_after(self(), :attack_target, 0)
+
+    {:noreply, %{state | aggro_target: attacker_id, attack_timer: timer}}
+  end
+
+  @impl GenServer
+  def handle_info(:attack_target, %{aggro_target: target} = state) when target != nil do
+    case CombatServer.attack(state.id, target, state.combat_server) do
+      {:ok, _cooldown} ->
+        timer = Process.send_after(self(), :attack_target, @attack_interval_ms)
+        {:noreply, %{state | attack_timer: timer}}
+
+      {:error, _reason} ->
+        {:noreply, %{state | aggro_target: nil, attack_timer: nil}}
+    end
   end
 
   @impl GenServer
