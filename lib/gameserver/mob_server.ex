@@ -1,13 +1,12 @@
 defmodule Gameserver.MobServer do
   @moduledoc """
-  A DynamicSupervisor that spawns mobs into the world on startup.
-
-  Currently has no children — per-mob AI GenServers will be added later.
+  A DynamicSupervisor that spawns and supervises per-mob GenServer processes.
   """
 
   use DynamicSupervisor
 
-  alias Gameserver.Entity
+  alias Gameserver.Map, as: GameMap
+  alias Gameserver.UUID
   alias Gameserver.WorldServer
 
   @mobs [
@@ -25,17 +24,30 @@ defmodule Gameserver.MobServer do
 
   @impl DynamicSupervisor
   def init(world_server) do
-    # we can move this to a child genserver for startup
-    # if we notice we are blocking startup
-    spawn_mobs(world_server)
+    sup = self()
+
+    # can't call DynamicSupervisor.start_child/2 from init since we're not up yet
+    # so we spawn a child process to do this
+    # using Process.send/3 has issues, seems like GenServer eats it up
+    spawn_link(fn ->
+      Enum.each(@mobs, fn {name, pos} ->
+        {:ok, _pid} = spawn_mob(sup, name, pos, world_server)
+      end)
+    end)
+
     DynamicSupervisor.init(strategy: :one_for_one)
   end
 
-  @spec spawn_mobs(GenServer.server()) :: :ok
-  defp spawn_mobs(world_server) do
-    Enum.each(@mobs, fn {name, pos} ->
-      entity = Entity.new(name: name, type: :mob, pos: pos)
-      {:ok, _pos} = WorldServer.join_entity(entity, world_server)
-    end)
+  @spec spawn_mob(GenServer.server(), String.t(), GameMap.coord(), GenServer.server()) ::
+          DynamicSupervisor.on_start_child()
+  defp spawn_mob(supervisor, name, pos, world_server) do
+    mob = %Gameserver.Mob{
+      id: UUID.generate(),
+      name: name,
+      spawn_pos: pos,
+      world_server: world_server
+    }
+
+    DynamicSupervisor.start_child(supervisor, {Gameserver.Mob, mob})
   end
 end

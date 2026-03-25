@@ -29,10 +29,14 @@ defmodule Gameserver.Entity do
   @doc """
   Creates a new entity.
 
-  Requires `:name` and `:type`. Generates a UUID if `:id` is not provided.
-  Defaults `:stats` and `:cooldowns` to their empty structs.
+  Accepts a keyword list with `:name` and `:type` (generates UUID if `:id` not provided),
+  or a `Gameserver.Mob` struct.
   """
-  @spec new(keyword()) :: t()
+  @spec new(Gameserver.Mob.t() | keyword()) :: t()
+  def new(%Gameserver.Mob{} = mob) do
+    new(id: mob.id, name: mob.name, type: :mob, pos: mob.spawn_pos)
+  end
+
   def new(opts) do
     opts = Keyword.put_new_lazy(opts, :id, &UUID.generate/0)
     struct!(__MODULE__, opts)
