@@ -72,11 +72,11 @@ defmodule Gameserver.CombatServer do
   def handle_call(
         {:attack, attacker_id, defender_id},
         _from,
-        %__MODULE__{entity_server: entity_server, world_server: world_server} = state
+        %__MODULE__{entity_server: entity_server} = state
       ) do
     with {:ok, attacker} <- EntityServer.get_entity(attacker_id, entity_server),
          {:ok, defender} <- EntityServer.get_entity(defender_id, entity_server),
-         :ok <- check_adjacent(attacker_id, defender_id, world_server) do
+         :ok <- check_adjacent(attacker, defender) do
       defender_hp_before = defender.stats.hp
 
       {:ok, update_fn} = perform_attack(attacker, defender)
@@ -124,16 +124,16 @@ defmodule Gameserver.CombatServer do
     Phoenix.PubSub.broadcast(Gameserver.PubSub, @combat_topic, {:combat_event, event})
   end
 
-  @spec check_adjacent(UUID.t(), UUID.t(), GenServer.server()) ::
-          :ok | {:error, :out_of_range | :not_found}
-  defp check_adjacent(attacker_id, defender_id, world_server) do
-    with {:ok, {ax, ay}} <- WorldServer.get_position(attacker_id, world_server),
-         {:ok, {dx, dy}} <- WorldServer.get_position(defender_id, world_server) do
-      if abs(ax - dx) <= 1 and abs(ay - dy) <= 1 do
-        :ok
-      else
-        {:error, :out_of_range}
-      end
+  @spec check_adjacent(Entity.t(), Entity.t()) ::
+          :ok | {:error, :out_of_range}
+  defp check_adjacent(
+         %Entity{pos: {a_x, a_y}} = _attacker,
+         %Entity{pos: {d_x, d_y}} = _defender
+       ) do
+    if abs(a_x - d_x) <= 1 and abs(a_y - d_y) <= 1 do
+      :ok
+    else
+      {:error, :out_of_range}
     end
   end
 end
