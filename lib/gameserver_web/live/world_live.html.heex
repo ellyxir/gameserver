@@ -64,6 +64,7 @@
       <div
         id="combat-log"
         phx-update="stream"
+        phx-hook="ScrollBottom"
         class="mt-2 font-mono text-sm text-gray-300 bg-gray-800 rounded p-3 h-36 overflow-y-auto"
       >
         <div :for={{id, entry} <- @streams.combat_log} id={id} class="py-0.5">
