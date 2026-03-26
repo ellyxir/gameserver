@@ -54,6 +54,34 @@ defmodule GameserverWeb.WorldLiveTest do
     end
   end
 
+  describe "player hp display" do
+    test "renders player hp on mount", %{conn: conn} do
+      {:ok, user} = User.new("hpplayer")
+      {:ok, _position} = WorldServer.join_user(user)
+
+      {:ok, view, _html} = live(conn, ~p"/world?user_id=#{user.id}")
+
+      assert has_element?(view, "#player-hp")
+      assert render(element(view, "#player-hp")) =~ "10/10"
+    end
+
+    test "updates hp when player entity changes", %{conn: conn} do
+      {:ok, user} = User.new("hpupdate")
+      {:ok, _position} = WorldServer.join_user(user)
+
+      {:ok, view, _html} = live(conn, ~p"/world?user_id=#{user.id}")
+
+      alias Gameserver.EntityServer
+
+      {:ok, _updated} =
+        EntityServer.update_entity(user.id, fn entity ->
+          %{entity | stats: %{entity.stats | hp: 7}}
+        end)
+
+      assert render(element(view, "#player-hp")) =~ "7/10"
+    end
+  end
+
   describe "player on map" do
     test "renders player as @ on the map", %{conn: conn} do
       {:ok, user} = User.new("mapplayer")
