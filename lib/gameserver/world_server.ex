@@ -286,16 +286,16 @@ defmodule Gameserver.WorldServer do
 
   @spec apply_move(UUID.t(), GameMap.coord(), t()) :: :ok
   defp apply_move(id, destination, state) do
+    update_fn =
+      fn e ->
+        cooldowns = Cooldowns.start(e.cooldowns, :move, @move_cooldown_ms)
+        %{e | pos: destination, cooldowns: cooldowns}
+      end
+
     {:ok, _updated} =
       EntityServer.update_entity(
         id,
-        fn e ->
-          %{
-            e
-            | pos: destination,
-              cooldowns: Cooldowns.start(e.cooldowns, :move, @move_cooldown_ms)
-          }
-        end,
+        update_fn,
         state.entity_server
       )
 
