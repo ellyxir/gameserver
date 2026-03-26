@@ -1,5 +1,6 @@
 defmodule Gameserver.WorldServerTest do
-  use ExUnit.Case, async: true
+  # async: false because pubsub broadcast tests share the global "world:presence" topic
+  use ExUnit.Case, async: false
 
   alias Gameserver.Entity
   alias Gameserver.EntityServer
