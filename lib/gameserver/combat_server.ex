@@ -69,10 +69,11 @@ defmodule Gameserver.CombatServer do
       ) do
     with {:ok, attacker} <- EntityServer.get_entity(attacker_id, entity_server),
          {:ok, defender} <- EntityServer.get_entity(defender_id, entity_server),
+         :ok <- check_alive(defender),
          :ok <- check_adjacent(attacker, defender) do
       defender_hp_before = defender.stats.hp
 
-      {:ok, update_fn} = perform_attack(attacker, defender)
+      update_fn = perform_attack(attacker, defender)
 
       {:ok, defender} =
         EntityServer.update_entity(
@@ -92,24 +93,21 @@ defmodule Gameserver.CombatServer do
   end
 
   @doc """
-  performs attack, returns the updated attacker and defender entities
+  performs attack, returns the function to be executed on the entityserver to update the defender
   note this is a pure function, doesn't update the entityserver
   """
-  @spec perform_attack(Entity.t(), Entity.t()) :: {:ok, EntityServer.entity_transform_function()}
+  @spec perform_attack(Entity.t(), Entity.t()) :: EntityServer.entity_transform_function()
   def perform_attack(%Entity{} = attacker, %Entity{} = _defender) do
     damage = attacker.stats.attack_power
 
-    update_fn =
-      fn e ->
-        updated_hp = max(0, e.stats.hp - damage)
+    fn e ->
+      updated_hp = max(0, e.stats.hp - damage)
 
-        # once dead, always dead
-        is_dead = e.stats.dead || updated_hp <= 0
+      # once dead, always dead
+      is_dead = e.stats.dead || updated_hp <= 0
 
-        %{e | stats: %{e.stats | hp: updated_hp, dead: is_dead}}
-      end
-
-    {:ok, update_fn}
+      %{e | stats: %{e.stats | hp: updated_hp, dead: is_dead}}
+    end
   end
 
   @spec broadcast_combat_event(Entity.t(), Entity.t(), non_neg_integer(), non_neg_integer()) ::
@@ -126,6 +124,10 @@ defmodule Gameserver.CombatServer do
 
     Phoenix.PubSub.broadcast(Gameserver.PubSub, @combat_topic, {:combat_event, event})
   end
+
+  @spec check_alive(Entity.t()) :: :ok | {:error, :target_dead}
+  defp check_alive(%Entity{stats: %{dead: false}}), do: :ok
+  defp check_alive(%Entity{stats: %{dead: true}}), do: {:error, :target_dead}
 
   @spec check_adjacent(Entity.t(), Entity.t()) ::
           :ok | {:error, :out_of_range}

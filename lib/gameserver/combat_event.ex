@@ -1,7 +1,7 @@
 defmodule Gameserver.CombatEvent do
   @moduledoc """
-    CombatEvent for PubSub
-    Enforces keys, compile time checking
+  CombatEvent for PubSub
+  Enforces keys, compile time checking
   """
 
   alias Gameserver.UUID
@@ -10,7 +10,7 @@ defmodule Gameserver.CombatEvent do
   defstruct [:attacker_id, :defender_id, :damage, :defender_hp, dead: false]
 
   @typedoc """
-  A broadcast combat event with attacker/defender IDs and damage dealt"
+  A broadcast combat event with attacker/defender IDs and damage dealt
   """
   @type t() :: %__MODULE__{
           attacker_id: UUID.t(),
