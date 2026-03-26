@@ -136,11 +136,31 @@ defmodule Gameserver.CombatServerTest do
 
     test "perform_attack clamps defender hp at zero" do
       attacker = Entity.new(name: "alice", type: :user)
+      attacker = %{attacker | stats: %{attacker.stats | attack_power: 5}}
+
       defender = Entity.new(name: "goblin", type: :mob, pos: {2, 1})
-      defender = %{defender | stats: %{defender.stats | hp: 1, attack_power: 5}}
+      defender = %{defender | stats: %{defender.stats | hp: 1}}
       {:ok, update_fn} = CombatServer.perform_attack(attacker, defender)
       updated_defender = update_fn.(defender)
       assert updated_defender.stats.hp == 0
+    end
+
+    test "perform_attack doesnt allow zombies" do
+      attacker = Entity.new(name: "alice", type: :user)
+      defender = Entity.new(name: "goblin", type: :mob, pos: {2, 1})
+      defender = %{defender | stats: %{defender.stats | dead: true}}
+      {:ok, update_fn} = CombatServer.perform_attack(attacker, defender)
+      updated_defender = update_fn.(defender)
+      assert updated_defender.stats.dead
+    end
+
+    test "perform_attack sets dead" do
+      attacker = Entity.new(name: "alice", type: :user)
+      defender = Entity.new(name: "goblin", type: :mob, pos: {2, 1})
+      defender = %{defender | stats: %{defender.stats | hp: 1}}
+      {:ok, update_fn} = CombatServer.perform_attack(attacker, defender)
+      updated_defender = update_fn.(defender)
+      assert updated_defender.stats.dead
     end
   end
 end

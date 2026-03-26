@@ -3,13 +3,14 @@ defmodule Gameserver.Stats do
   Combat stats shared by players and mobs.
   """
 
-  defstruct hp: 10, max_hp: 10, attack_power: 1
+  defstruct hp: 10, max_hp: 10, attack_power: 1, dead: false
 
   @typedoc "Combat stats for an entity"
   @type t() :: %__MODULE__{
           hp: non_neg_integer(),
           max_hp: pos_integer(),
-          attack_power: non_neg_integer()
+          attack_power: non_neg_integer(),
+          dead: boolean()
         }
 
   @doc """

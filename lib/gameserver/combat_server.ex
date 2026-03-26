@@ -106,7 +106,15 @@ defmodule Gameserver.CombatServer do
   def perform_attack(%Entity{} = attacker, %Entity{} = _defender) do
     damage = attacker.stats.attack_power
 
-    update_fn = fn e -> %{e | stats: %{e.stats | hp: max(0, e.stats.hp - damage)}} end
+    update_fn =
+      fn e ->
+        updated_hp = max(0, e.stats.hp - damage)
+
+        # once dead, always dead
+        is_dead = e.stats.dead || updated_hp <= 0
+
+        %{e | stats: %{e.stats | hp: updated_hp, dead: is_dead}}
+      end
 
     {:ok, update_fn}
   end
