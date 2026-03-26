@@ -143,6 +143,149 @@ defmodule Gameserver.Map do
     end
   end
 
+  @typep room() :: {coord(), width(), height()}
+  @typep rand_state() :: :rand.state()
+
+  @room_padding 2
+
+  defmodule RoomConfig do
+    @moduledoc false
+
+    @enforce_keys [:width, :height]
+    defstruct width: nil,
+              height: nil,
+              room_count: 8,
+              room_dim_min: 3,
+              room_dim_max: 7,
+              max_attempts: 100
+
+    @typep width() :: pos_integer()
+    @typep height() :: pos_integer()
+
+    @type t() :: %__MODULE__{
+            width: width(),
+            height: height(),
+            room_count: non_neg_integer(),
+            room_dim_min: pos_integer(),
+            room_dim_max: pos_integer(),
+            max_attempts: non_neg_integer()
+          }
+  end
+
+  @doc """
+  Generates a random dungeon map with the given dimensions.
+
+  Rooms are placed via random rejection with axis-aligned bounding box overlap checks and
+  #{@room_padding}-tile padding (minimum wall tiles between any two rooms).
+
+  Options:
+    - `:room_count` - target number of rooms (default: 8)
+    - `:room_dim_min` - minimum room dimension in tiles, applies to both width and height (default: 3)
+    - `:room_dim_max` - maximum room dimension in tiles, applies to both width and height (default: 7)
+    - `:max_attempts` - max placement attempts before giving up (default: 100)
+    - `:seed` - optional seed for reproducibility (see `:rand.seed()`)
+
+  Raises `ArgumentError` if `:room_dim_min` is greater than `:room_dim_max`.
+  """
+  @spec generate(width(), height(), keyword()) :: t()
+  def generate(width, height, opts \\ []) do
+    seed = Keyword.get(opts, :seed)
+
+    rand =
+      if seed,
+        do: :rand.seed_s(:exsss, seed),
+        else: :rand.seed_s(:exsss)
+
+    room_opts = Keyword.drop(opts, [:seed])
+    config = struct!(RoomConfig, Keyword.merge([width: width, height: height], room_opts))
+
+    if config.room_dim_min > config.room_dim_max do
+      raise ArgumentError,
+            "room_dim_min (#{config.room_dim_min}) must be <= room_dim_max (#{config.room_dim_max})"
+    end
+
+    # generate non-overlapping rooms based on the config
+    {rooms, _rand} = place_rooms(config, rand)
+
+    # make a new grid, filled with just walls
+    new_grid = new(width, height)
+
+    # carve out each room into the `new_grid` that have floor tiles
+    Enum.reduce(rooms, new_grid, fn {{rx, ry}, rw, rh}, map ->
+      fill_rect(map, {rx, ry}, rw, rh, :floor)
+    end)
+  end
+
+  @spec place_rooms(RoomConfig.t(), rand_state()) :: {[room()], rand_state()}
+  defp place_rooms(config, rand) do
+    do_place_rooms(config, rand, 0, 0, [])
+  end
+
+  @spec do_place_rooms(RoomConfig.t(), rand_state(), non_neg_integer(), non_neg_integer(), [
+          room()
+        ]) ::
+          {[room()], rand_state()}
+  defp do_place_rooms(
+         %RoomConfig{room_count: room_count},
+         rand,
+         _attempt_num,
+         rooms_placed,
+         rooms
+       )
+       when rooms_placed >= room_count do
+    {rooms, rand}
+  end
+
+  defp do_place_rooms(
+         %RoomConfig{max_attempts: max_attempts},
+         rand,
+         attempt_num,
+         _rooms_placed,
+         rooms
+       )
+       when attempt_num >= max_attempts do
+    {rooms, rand}
+  end
+
+  defp do_place_rooms(config, rand, attempt_num, rooms_placed, rooms) do
+    %RoomConfig{width: w, height: h, room_dim_min: dim_min, room_dim_max: dim_max} = config
+    {rw, rand} = uniform_range(dim_min, dim_max, rand)
+    {rh, rand} = uniform_range(dim_min, dim_max, rand)
+    max_x = max(1, w - rw - 1)
+    max_y = max(1, h - rh - 1)
+    {rx, rand} = uniform_range(1, max_x, rand)
+    {ry, rand} = uniform_range(1, max_y, rand)
+    candidate = {{rx, ry}, rw, rh}
+    fits_in_grid = rx >= 1 and ry >= 1 and rx + rw < w and ry + rh < h
+
+    if fits_in_grid and not rooms_overlap?(candidate, rooms) do
+      do_place_rooms(config, rand, attempt_num + 1, rooms_placed + 1, [candidate | rooms])
+    else
+      do_place_rooms(config, rand, attempt_num + 1, rooms_placed, rooms)
+    end
+  end
+
+  # returns a random integer in [min, max] (inclusive)
+  # :rand.uniform_s/2 returns 1..n, so we shift it into the desired range
+  @spec uniform_range(integer(), integer(), rand_state()) :: {integer(), rand_state()}
+  defp uniform_range(min, max, rand) when min <= max do
+    {val, rand} = :rand.uniform_s(max - min + 1, rand)
+    {val - 1 + min, rand}
+  end
+
+  @spec rooms_overlap?(room(), [room()]) :: boolean()
+  defp rooms_overlap?(candidate, rooms) do
+    Enum.any?(rooms, &aabb_overlap?(candidate, &1, @room_padding))
+  end
+
+  @spec aabb_overlap?(room(), room(), non_neg_integer()) :: boolean()
+  defp aabb_overlap?({{ax, ay}, aw, ah}, {{bx, by}, bw, bh}, pad) do
+    not (ax + aw + pad <= bx or
+           bx + bw + pad <= ax or
+           ay + ah + pad <= by or
+           by + bh + pad <= ay)
+  end
+
   @doc """
   Creates a sample dungeon map with 3 rooms connected by corridors.
 

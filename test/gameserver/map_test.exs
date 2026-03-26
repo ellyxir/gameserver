@@ -301,6 +301,97 @@ defmodule Gameserver.MapTest do
     end
   end
 
+  describe "generate/2" do
+    test "returns a map with the given dimensions" do
+      map = GameMap.generate(30, 20)
+      assert %GameMap{} = map
+      assert map.width == 30
+      assert map.height == 20
+    end
+
+    test "contains floor tiles from carved rooms" do
+      map = GameMap.generate(40, 40, seed: 42)
+
+      floor_count =
+        for x <- 0..(map.width - 1),
+            y <- 0..(map.height - 1),
+            GameMap.get_tile!(map, {x, y}) == :floor,
+            reduce: 0 do
+          acc -> acc + 1
+        end
+
+      assert floor_count > 0
+    end
+
+    test "raises when room_dim_min > room_dim_max" do
+      assert_raise ArgumentError, fn ->
+        GameMap.generate(30, 30, room_dim_min: 7, room_dim_max: 3, seed: 1)
+      end
+    end
+
+    test "rejects rooms that would extend past grid bounds" do
+      # on a 4x4 grid, rooms of size 5x5 can never fit.
+      # the generator should place 0 rooms, leaving all walls.
+      map = GameMap.generate(4, 4, seed: 1, room_dim_min: 5, room_dim_max: 5, room_count: 3)
+
+      floor_count =
+        for x <- 0..(map.width - 1),
+            y <- 0..(map.height - 1),
+            GameMap.get_tile!(map, {x, y}) == :floor,
+            reduce: 0 do
+          acc -> acc + 1
+        end
+
+      assert floor_count == 0, "expected no rooms on a grid too small to fit them"
+    end
+
+    test "rooms have wall padding between them" do
+      # with no corridors yet, each room is an isolated floor rectangle.
+      # flood fill should find multiple separate floor regions, proving
+      # rooms don't touch.
+      map = GameMap.generate(50, 50, seed: 42, room_count: 6)
+
+      floor_tiles =
+        for x <- 0..(map.width - 1),
+            y <- 0..(map.height - 1),
+            GameMap.get_tile!(map, {x, y}) == :floor,
+            do: {x, y}
+
+      floor_set = MapSet.new(floor_tiles)
+      regions = count_regions(floor_set)
+
+      assert regions >= 2, "expected multiple isolated rooms, got #{regions}"
+    end
+  end
+
+  defp count_regions(floor_set), do: count_regions(floor_set, 0)
+
+  defp count_regions(floor_set, count) do
+    case Enum.at(floor_set, 0) do
+      nil ->
+        count
+
+      start ->
+        count_regions(MapSet.difference(floor_set, flood_fill(start, floor_set)), count + 1)
+    end
+  end
+
+  defp flood_fill(start, floor_set) do
+    do_flood_fill([start], floor_set, MapSet.new())
+  end
+
+  defp do_flood_fill([], _floor_set, visited), do: visited
+
+  defp do_flood_fill([{x, y} | rest], floor_set, visited) do
+    if MapSet.member?(floor_set, {x, y}) and not MapSet.member?(visited, {x, y}) do
+      visited = MapSet.put(visited, {x, y})
+      neighbors = [{x + 1, y}, {x - 1, y}, {x, y + 1}, {x, y - 1}]
+      do_flood_fill(neighbors ++ rest, floor_set, visited)
+    else
+      do_flood_fill(rest, floor_set, visited)
+    end
+  end
+
   describe "parse_coord/2" do
     test "converts string pair to coord tuple" do
       assert GameMap.parse_coord("3", "7") == {3, 7}
