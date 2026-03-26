@@ -17,6 +17,8 @@ defmodule GameserverWeb.WorldLive do
   alias Gameserver.WorldServer
   alias GameserverWeb.Entities
 
+  @combat_log_limit 50
+
   @impl Phoenix.LiveView
   def mount(params, _session, socket) do
     user_id = Map.get(params, "user_id")
@@ -45,7 +47,7 @@ defmodule GameserverWeb.WorldLive do
              entities: entities,
              player_stats: fetch_player_stats(user_id)
            )
-           |> stream(:combat_log, [])}
+           |> stream(:combat_log, [], limit: -@combat_log_limit)}
         else
           {:ok, push_navigate(socket, to: ~p"/game")}
         end
@@ -127,7 +129,7 @@ defmodule GameserverWeb.WorldLive do
   def handle_info({:combat_event, %CombatEvent{} = event}, socket) do
     message = format_combat_message(event, socket.assigns)
     entry = %{id: UUID.generate(), message: message}
-    {:noreply, stream_insert(socket, :combat_log, entry)}
+    {:noreply, stream_insert(socket, :combat_log, entry, limit: -@combat_log_limit)}
   end
 
   def handle_info(
