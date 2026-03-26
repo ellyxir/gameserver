@@ -5,6 +5,7 @@ defmodule Gameserver.Mob do
 
   use GenServer, restart: :transient
 
+  alias Gameserver.CombatEvent
   alias Gameserver.CombatServer
   alias Gameserver.Map, as: GameMap
   alias Gameserver.UUID
@@ -63,7 +64,21 @@ defmodule Gameserver.Mob do
 
   @impl GenServer
   def handle_info(
-        {:combat_event, %{defender_id: my_id, attacker_id: attacker_id}},
+        {:combat_event, %CombatEvent{defender_id: my_id, attacker_id: attacker_id, dead: true}},
+        %{id: my_id} = state
+      ) do
+    # we are dead, cancel timer if we have one
+    if state.attack_timer, do: Process.cancel_timer(state.attack_timer)
+
+    # despawn
+    WorldServer.leave(my_id, state.world_server)
+
+    # kill process
+    {:stop, :normal, %{state | aggro_target: attacker_id, attack_timer: nil}}
+  end
+
+  def handle_info(
+        {:combat_event, %CombatEvent{defender_id: my_id, attacker_id: attacker_id}},
         %{id: my_id} = state
       ) do
     timer =

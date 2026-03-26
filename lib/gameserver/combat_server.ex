@@ -9,6 +9,7 @@ defmodule Gameserver.CombatServer do
 
   use GenServer
 
+  alias Gameserver.CombatEvent
   alias Gameserver.Cooldowns
   alias Gameserver.Entity
   alias Gameserver.EntityServer
@@ -19,14 +20,6 @@ defmodule Gameserver.CombatServer do
   @type t() :: %__MODULE__{
           entity_server: GenServer.server(),
           world_server: GenServer.server()
-        }
-
-  @typedoc "A broadcast combat event with attacker/defender IDs and damage dealt"
-  @type combat_event() :: %{
-          attacker_id: UUID.t(),
-          defender_id: UUID.t(),
-          damage: non_neg_integer(),
-          defender_hp: non_neg_integer()
         }
 
   defstruct entity_server: EntityServer,
@@ -72,21 +65,26 @@ defmodule Gameserver.CombatServer do
   def handle_call(
         {:attack, attacker_id, defender_id},
         _from,
-        %__MODULE__{entity_server: entity_server, world_server: world_server} = state
+        %__MODULE__{entity_server: entity_server} = state
       ) do
     with {:ok, attacker} <- EntityServer.get_entity(attacker_id, entity_server),
          {:ok, defender} <- EntityServer.get_entity(defender_id, entity_server),
-         :ok <- check_adjacent(attacker_id, defender_id, world_server) do
-      damage = attacker.stats.attack_power
+         :ok <- check_alive(defender),
+         :ok <- check_adjacent(attacker, defender) do
+      defender_hp_before = defender.stats.hp
 
-      {:ok, updated} =
+      update_fn = perform_attack(attacker, defender)
+
+      {:ok, defender} =
         EntityServer.update_entity(
           defender_id,
-          fn e -> %{e | stats: %{e.stats | hp: max(0, e.stats.hp - damage)}} end,
+          update_fn,
           entity_server
         )
 
-      broadcast_combat_event(attacker, defender, damage, updated.stats.hp)
+      defender_hp_after = defender.stats.hp
+      damage_taken = defender_hp_before - defender_hp_after
+      broadcast_combat_event(attacker, defender, damage_taken, defender_hp_after)
 
       {:reply, {:ok, {:attack, @attack_cooldown_ms}}, state}
     else
@@ -94,29 +92,53 @@ defmodule Gameserver.CombatServer do
     end
   end
 
+  @doc """
+  performs attack, returns the function to be executed on the entityserver to update the defender
+  note this is a pure function, doesn't update the entityserver
+  """
+  @spec perform_attack(Entity.t(), Entity.t()) :: EntityServer.entity_transform_function()
+  def perform_attack(%Entity{} = attacker, %Entity{} = _defender) do
+    damage = attacker.stats.attack_power
+
+    fn e ->
+      updated_hp = max(0, e.stats.hp - damage)
+
+      # once dead, always dead
+      is_dead = e.stats.dead || updated_hp <= 0
+
+      %{e | stats: %{e.stats | hp: updated_hp, dead: is_dead}}
+    end
+  end
+
   @spec broadcast_combat_event(Entity.t(), Entity.t(), non_neg_integer(), non_neg_integer()) ::
           :ok
-  defp broadcast_combat_event(attacker, defender, damage, defender_hp) do
-    event = %{
+  defp broadcast_combat_event(%Entity{} = attacker, %Entity{} = defender, damage, defender_hp)
+       when is_integer(damage) and is_integer(defender_hp) do
+    event = %CombatEvent{
       attacker_id: attacker.id,
       defender_id: defender.id,
       damage: damage,
-      defender_hp: defender_hp
+      defender_hp: defender_hp,
+      dead: defender.stats.dead
     }
 
     Phoenix.PubSub.broadcast(Gameserver.PubSub, @combat_topic, {:combat_event, event})
   end
 
-  @spec check_adjacent(UUID.t(), UUID.t(), GenServer.server()) ::
-          :ok | {:error, :out_of_range | :not_found}
-  defp check_adjacent(attacker_id, defender_id, world_server) do
-    with {:ok, {ax, ay}} <- WorldServer.get_position(attacker_id, world_server),
-         {:ok, {dx, dy}} <- WorldServer.get_position(defender_id, world_server) do
-      if abs(ax - dx) <= 1 and abs(ay - dy) <= 1 do
-        :ok
-      else
-        {:error, :out_of_range}
-      end
+  @spec check_alive(Entity.t()) :: :ok | {:error, :target_dead}
+  defp check_alive(%Entity{stats: %{dead: false}}), do: :ok
+  defp check_alive(%Entity{stats: %{dead: true}}), do: {:error, :target_dead}
+
+  @spec check_adjacent(Entity.t(), Entity.t()) ::
+          :ok | {:error, :out_of_range}
+  defp check_adjacent(
+         %Entity{pos: {a_x, a_y}} = _attacker,
+         %Entity{pos: {d_x, d_y}} = _defender
+       ) do
+    if abs(a_x - d_x) <= 1 and abs(a_y - d_y) <= 1 do
+      :ok
+    else
+      {:error, :out_of_range}
     end
   end
 end

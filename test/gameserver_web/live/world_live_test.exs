@@ -4,6 +4,7 @@ defmodule GameserverWeb.WorldLiveTest do
 
   import Phoenix.LiveViewTest
 
+  alias Gameserver.CombatEvent
   alias Gameserver.User
   alias Gameserver.UUID
   alias Gameserver.WorldServer
@@ -300,7 +301,8 @@ defmodule GameserverWeb.WorldLiveTest do
       Phoenix.PubSub.broadcast!(
         Gameserver.PubSub,
         CombatServer.combat_topic(),
-        {:combat_event, %{attacker_id: user.id, defender_id: mob.id, damage: 1, defender_hp: 9}}
+        {:combat_event,
+         %CombatEvent{attacker_id: user.id, defender_id: mob.id, damage: 1, defender_hp: 9}}
       )
 
       assert has_element?(view, "#combat-log")
@@ -320,7 +322,8 @@ defmodule GameserverWeb.WorldLiveTest do
       Phoenix.PubSub.broadcast!(
         Gameserver.PubSub,
         CombatServer.combat_topic(),
-        {:combat_event, %{attacker_id: mob.id, defender_id: user.id, damage: 2, defender_hp: 8}}
+        {:combat_event,
+         %CombatEvent{attacker_id: mob.id, defender_id: user.id, damage: 2, defender_hp: 8}}
       )
 
       assert render(view) =~ "spider hits you for 2 (8 hp)"
@@ -348,10 +351,17 @@ defmodule GameserverWeb.WorldLiveTest do
       Phoenix.PubSub.broadcast!(
         Gameserver.PubSub,
         CombatServer.combat_topic(),
-        {:combat_event, %{attacker_id: user.id, defender_id: mob.id, damage: 1, defender_hp: 0}}
+        {:combat_event,
+         %CombatEvent{
+           attacker_id: user.id,
+           defender_id: mob.id,
+           damage: 1,
+           defender_hp: 0,
+           dead: true
+         }}
       )
 
-      assert render(view) =~ "You killed rat!"
+      assert has_element?(view, "#combat-log div", "You killed rat!")
     end
   end
 

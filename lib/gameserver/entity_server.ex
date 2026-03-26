@@ -16,6 +16,14 @@ defmodule Gameserver.EntityServer do
   def entity_topic, do: @entity_topic
 
   @typedoc """
+  used to transform an entity on the entity server
+  you pass the update function so that there is no race condition where you
+  grabbed a copy of an entity then another process does the same before you
+  can save yours
+  """
+  @type entity_transform_function() :: (Entity.t() -> Entity.t())
+
+  @typedoc """
   map of entity uuids to entities
   """
   @type state() :: %{
@@ -63,7 +71,7 @@ defmodule Gameserver.EntityServer do
   Applies an update function to an entity. Returns `{:ok, updated_entity}` or
   `{:error, :not_found}`.
   """
-  @spec update_entity(UUID.t(), (Entity.t() -> Entity.t()), GenServer.server()) ::
+  @spec update_entity(UUID.t(), entity_transform_function(), GenServer.server()) ::
           {:ok, Entity.t()} | {:error, :not_found | {:update_failed, term()}}
   def update_entity(id, fun, server \\ __MODULE__) when is_binary(id) and is_function(fun, 1) do
     GenServer.call(server, {:update_entity, id, fun})

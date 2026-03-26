@@ -1,5 +1,6 @@
 defmodule Gameserver.CombatServerTest do
-  use ExUnit.Case, async: true
+  # set async to false due to pubsub messages mixing during tests
+  use ExUnit.Case, async: false
 
   alias Gameserver.CombatServer
   alias Gameserver.Entity
@@ -98,6 +99,16 @@ defmodule Gameserver.CombatServerTest do
       assert {:error, :out_of_range} = CombatServer.attack(user.id, mob.id, ctx.combat_server)
     end
 
+    test "returns target_dead when defender is already dead", ctx do
+      {:ok, user} = User.new("alice")
+      {:ok, _pos} = WorldServer.join_user(user, ctx.world_server)
+      mob = Entity.new(name: "goblin", type: :mob, pos: {2, 1})
+      mob = %{mob | stats: %{mob.stats | dead: true}}
+      {:ok, _pos} = WorldServer.join_entity(mob, ctx.world_server)
+
+      assert {:error, :target_dead} = CombatServer.attack(user.id, mob.id, ctx.combat_server)
+    end
+
     test "does not broadcast combat event on failed attack", ctx do
       Phoenix.PubSub.subscribe(Gameserver.PubSub, CombatServer.combat_topic())
       {:ok, user} = User.new("alice")
@@ -124,6 +135,43 @@ defmodule Gameserver.CombatServerTest do
       assert event.defender_id == mob.id
       assert event.damage == attacker.stats.attack_power
       assert event.defender_hp == mob.stats.hp - attacker.stats.attack_power
+    end
+
+    test "perform_attack modifies defender" do
+      attacker = Entity.new(name: "alice", type: :user)
+      defender = Entity.new(name: "goblin", type: :mob, pos: {2, 1})
+      update_fn = CombatServer.perform_attack(attacker, defender)
+      updated_defender = update_fn.(defender)
+      assert updated_defender.stats.hp < updated_defender.stats.max_hp
+    end
+
+    test "perform_attack clamps defender hp at zero" do
+      attacker = Entity.new(name: "alice", type: :user)
+      attacker = %{attacker | stats: %{attacker.stats | attack_power: 5}}
+
+      defender = Entity.new(name: "goblin", type: :mob, pos: {2, 1})
+      defender = %{defender | stats: %{defender.stats | hp: 1}}
+      update_fn = CombatServer.perform_attack(attacker, defender)
+      updated_defender = update_fn.(defender)
+      assert updated_defender.stats.hp == 0
+    end
+
+    test "perform_attack doesnt allow zombies" do
+      attacker = Entity.new(name: "alice", type: :user)
+      defender = Entity.new(name: "goblin", type: :mob, pos: {2, 1})
+      defender = %{defender | stats: %{defender.stats | dead: true}}
+      update_fn = CombatServer.perform_attack(attacker, defender)
+      updated_defender = update_fn.(defender)
+      assert updated_defender.stats.dead
+    end
+
+    test "perform_attack sets dead" do
+      attacker = Entity.new(name: "alice", type: :user)
+      defender = Entity.new(name: "goblin", type: :mob, pos: {2, 1})
+      defender = %{defender | stats: %{defender.stats | hp: 1}}
+      update_fn = CombatServer.perform_attack(attacker, defender)
+      updated_defender = update_fn.(defender)
+      assert updated_defender.stats.dead
     end
   end
 end

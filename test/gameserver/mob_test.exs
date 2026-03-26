@@ -1,6 +1,7 @@
 defmodule Gameserver.MobTest do
   use ExUnit.Case, async: true
 
+  alias Gameserver.CombatEvent
   alias Gameserver.CombatServer
   alias Gameserver.EntityServer
   alias Gameserver.Mob
@@ -40,7 +41,13 @@ defmodule Gameserver.MobTest do
       {:ok, pid} = Mob.start_link(mob)
       _ = :sys.get_state(pid)
 
-      event = %{attacker_id: attacker_id, defender_id: mob_id, damage: 5, defender_hp: 95}
+      event = %CombatEvent{
+        attacker_id: attacker_id,
+        defender_id: mob_id,
+        damage: 5,
+        defender_hp: 95
+      }
+
       send(pid, {:combat_event, event})
 
       state = :sys.get_state(pid)
@@ -68,7 +75,13 @@ defmodule Gameserver.MobTest do
       {:ok, pid} = Mob.start_link(mob)
       _ = :sys.get_state(pid)
 
-      event = %{attacker_id: player_id, defender_id: mob_id, damage: 5, defender_hp: 95}
+      event = %CombatEvent{
+        attacker_id: player_id,
+        defender_id: mob_id,
+        damage: 5,
+        defender_hp: 95
+      }
+
       send(pid, {:combat_event, event})
       _ = :sys.get_state(pid)
 
@@ -78,6 +91,41 @@ defmodule Gameserver.MobTest do
 
       {:ok, player_entity} = EntityServer.get_entity(player_id, ctx.entity_server)
       assert player_entity.stats.hp == 9
+    end
+
+    test "dead mob leaves the world", ctx do
+      mob_id = UUID.generate()
+      player_id = UUID.generate()
+
+      player = Gameserver.Entity.new(id: player_id, name: "hero", type: :user)
+      {:ok, {px, py}} = WorldServer.join_entity(player, ctx.world_server)
+
+      mob = %Mob{
+        id: mob_id,
+        name: "goblin",
+        spawn_pos: {px + 1, py},
+        world_server: ctx.world_server,
+        combat_server: ctx.combat_server
+      }
+
+      {:ok, pid} = Mob.start_link(mob)
+      _ = :sys.get_state(pid)
+
+      event = %CombatEvent{
+        attacker_id: player_id,
+        defender_id: mob_id,
+        damage: 50,
+        defender_hp: 0,
+        dead: true
+      }
+
+      # check that the process exits
+      ref = Process.monitor(pid)
+      send(pid, {:combat_event, event})
+      assert_receive {:DOWN, ^ref, :process, ^pid, :normal}
+
+      # check that mob left the world server
+      assert {:error, :not_found} = WorldServer.get_position(mob_id, ctx.world_server)
     end
 
     test "clears aggro when target leaves the world", ctx do
@@ -98,7 +146,13 @@ defmodule Gameserver.MobTest do
       {:ok, pid} = Mob.start_link(mob)
       _ = :sys.get_state(pid)
 
-      event = %{attacker_id: player_id, defender_id: mob_id, damage: 5, defender_hp: 95}
+      event = %CombatEvent{
+        attacker_id: player_id,
+        defender_id: mob_id,
+        damage: 5,
+        defender_hp: 95
+      }
+
       send(pid, {:combat_event, event})
       _ = :sys.get_state(pid)
 
@@ -129,7 +183,13 @@ defmodule Gameserver.MobTest do
       {:ok, pid} = Mob.start_link(mob)
       _ = :sys.get_state(pid)
 
-      event = %{attacker_id: player_id, defender_id: mob_id, damage: 5, defender_hp: 95}
+      event = %CombatEvent{
+        attacker_id: player_id,
+        defender_id: mob_id,
+        damage: 5,
+        defender_hp: 95
+      }
+
       send(pid, {:combat_event, event})
       _ = :sys.get_state(pid)
 
