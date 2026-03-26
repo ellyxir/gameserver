@@ -7,6 +7,7 @@ defmodule GameserverWeb.WorldLive do
 
   use GameserverWeb, :live_view
 
+  alias Gameserver.CombatEvent
   alias Gameserver.CombatServer
   alias Gameserver.Entity
   alias Gameserver.EntityServer
@@ -123,7 +124,7 @@ defmodule GameserverWeb.WorldLive do
     end
   end
 
-  def handle_info({:combat_event, event}, socket) do
+  def handle_info({:combat_event, %CombatEvent{} = event}, socket) do
     message = format_combat_message(event, socket.assigns)
     entry = %{id: UUID.generate(), message: message}
     {:noreply, stream_insert(socket, :combat_log, entry)}
@@ -176,19 +177,19 @@ defmodule GameserverWeb.WorldLive do
     position
   end
 
-  @spec format_combat_message(CombatServer.combat_event(), map()) :: String.t()
-  defp format_combat_message(event, assigns) do
+  @spec format_combat_message(CombatEvent.t(), map()) :: String.t()
+  defp format_combat_message(%CombatEvent{} = event, assigns) do
     attacker_name = entity_name(assigns, event.attacker_id)
     defender_name = entity_name(assigns, event.defender_id)
 
     cond do
-      event.defender_hp == 0 and event.attacker_id == assigns.user_id ->
+      event.dead and event.attacker_id == assigns.user_id ->
         "You killed #{defender_name}!"
 
-      event.defender_hp == 0 and event.defender_id == assigns.user_id ->
+      event.dead and event.defender_id == assigns.user_id ->
         "#{attacker_name} killed you!"
 
-      event.defender_hp == 0 ->
+      event.dead ->
         "#{attacker_name} killed #{defender_name}!"
 
       event.attacker_id == assigns.user_id ->

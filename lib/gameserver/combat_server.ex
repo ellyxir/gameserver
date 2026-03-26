@@ -9,6 +9,7 @@ defmodule Gameserver.CombatServer do
 
   use GenServer
 
+  alias Gameserver.CombatEvent
   alias Gameserver.Cooldowns
   alias Gameserver.Entity
   alias Gameserver.EntityServer
@@ -19,14 +20,6 @@ defmodule Gameserver.CombatServer do
   @type t() :: %__MODULE__{
           entity_server: GenServer.server(),
           world_server: GenServer.server()
-        }
-
-  @typedoc "A broadcast combat event with attacker/defender IDs and damage dealt"
-  @type combat_event() :: %{
-          attacker_id: UUID.t(),
-          defender_id: UUID.t(),
-          damage: non_neg_integer(),
-          defender_hp: non_neg_integer()
         }
 
   defstruct entity_server: EntityServer,
@@ -121,12 +114,14 @@ defmodule Gameserver.CombatServer do
 
   @spec broadcast_combat_event(Entity.t(), Entity.t(), non_neg_integer(), non_neg_integer()) ::
           :ok
-  defp broadcast_combat_event(attacker, defender, damage, defender_hp) do
-    event = %{
+  defp broadcast_combat_event(%Entity{} = attacker, %Entity{} = defender, damage, defender_hp)
+       when is_integer(damage) and is_integer(defender_hp) do
+    event = %CombatEvent{
       attacker_id: attacker.id,
       defender_id: defender.id,
       damage: damage,
-      defender_hp: defender_hp
+      defender_hp: defender_hp,
+      dead: defender.stats.dead
     }
 
     Phoenix.PubSub.broadcast(Gameserver.PubSub, @combat_topic, {:combat_event, event})
