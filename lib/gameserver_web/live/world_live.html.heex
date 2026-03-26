@@ -1,7 +1,7 @@
 <Layouts.app flash={@flash}>
   <div class="flex gap-8" phx-window-keydown="keydown">
     <div>
-      <div class="font-mono text-sm leading-none bg-gray-900 text-gray-300 p-4 rounded">
+      <div class="font-mono text-sm leading-none bg-gray-900 text-gray-300 p-4 rounded select-none">
         <%= for {row, y} <- Enum.with_index(@map_cells) do %>
           <div>
             <%= for {char, x} <- Enum.with_index(row) do %>
