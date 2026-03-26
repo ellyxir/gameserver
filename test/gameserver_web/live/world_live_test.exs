@@ -360,6 +360,39 @@ defmodule GameserverWeb.WorldLiveTest do
 
       assert has_element?(view, "#combat-log div", "You killed rat!")
     end
+
+    test "caps combat log to recent entries", %{conn: conn} do
+      {:ok, user} = User.new("logcapper")
+      {:ok, _pos} = WorldServer.join_user(user)
+
+      alias Gameserver.{CombatServer, Entity}
+      mob = Entity.new(name: "goblin", type: :mob, pos: {12, 2})
+      {:ok, _pos} = WorldServer.join_entity(mob)
+
+      {:ok, view, _html} = live(conn, ~p"/world?user_id=#{user.id}")
+
+      # send more events than the cap (50)
+      for i <- 1..51 do
+        Phoenix.PubSub.broadcast!(
+          Gameserver.PubSub,
+          CombatServer.combat_topic(),
+          {:combat_event,
+           %CombatEvent{
+             attacker_id: user.id,
+             defender_id: mob.id,
+             damage: 1,
+             defender_hp: 100 - i
+           }}
+        )
+      end
+
+      render(view)
+
+      # the first message (hp 99) should have been evicted
+      refute has_element?(view, "#combat-log div", "(99 hp)")
+      # the last message (hp 49) should still be present
+      assert has_element?(view, "#combat-log div", "(49 hp)")
+    end
   end
 
   describe "tile click input" do
