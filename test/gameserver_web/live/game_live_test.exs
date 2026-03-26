@@ -21,24 +21,21 @@ defmodule GameserverWeb.GameLiveTest do
     test "shows error for username too short", %{conn: conn} do
       {:ok, view, _html} = live(conn, ~p"/game")
 
-      html =
-        view
-        |> element("#login-form")
-        |> render_change(%{login_form: %{username: "ab"}})
+      view
+      |> element("#login-form")
+      |> render_change(%{login_form: %{username: "ab"}})
 
-      assert html =~ "should be at least 3 character"
+      assert has_element?(view, ".text-error", "should be at least 3 character")
     end
 
     test "no error for valid username", %{conn: conn} do
       {:ok, view, _html} = live(conn, ~p"/game")
 
-      html =
-        view
-        |> element("#login-form")
-        |> render_change(%{login_form: %{username: "alice"}})
+      view
+      |> element("#login-form")
+      |> render_change(%{login_form: %{username: "alice"}})
 
-      refute html =~ "should be at least"
-      refute html =~ "should be at most"
+      refute has_element?(view, ".text-error")
     end
   end
 
@@ -57,12 +54,11 @@ defmodule GameserverWeb.GameLiveTest do
     test "shows validation error for invalid username", %{conn: conn} do
       {:ok, view, _html} = live(conn, ~p"/game")
 
-      html =
-        view
-        |> element("#login-form")
-        |> render_submit(%{login_form: %{username: "ab"}})
+      view
+      |> element("#login-form")
+      |> render_submit(%{login_form: %{username: "ab"}})
 
-      assert html =~ "should be at least 3 character"
+      assert has_element?(view, ".text-error", "should be at least 3 character")
     end
 
     test "shows error when username is already taken", %{conn: conn} do
@@ -72,14 +68,13 @@ defmodule GameserverWeb.GameLiveTest do
 
       {:ok, view, _html} = live(conn, ~p"/game")
 
-      html =
-        view
-        |> element("#login-form")
-        |> render_submit(%{login_form: %{username: unique_name}})
+      view
+      |> element("#login-form")
+      |> render_submit(%{login_form: %{username: unique_name}})
 
       # Should stay on the form (no redirect) and show an error
       refute_redirected(view, ~p"/world")
-      assert html =~ "username not available", "Expected error message, got: #{html}"
+      assert has_element?(view, ".text-error", "username not available")
     end
   end
 end
