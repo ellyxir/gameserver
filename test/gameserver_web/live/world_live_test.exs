@@ -25,19 +25,19 @@ defmodule GameserverWeb.WorldLiveTest do
       {:ok, user} = User.new("validuser")
       {:ok, _position} = WorldServer.join_user(user)
 
-      {:ok, _view, html} = live(conn, ~p"/world?user_id=#{user.id}")
+      {:ok, view, _html} = live(conn, ~p"/world?user_id=#{user.id}")
 
-      assert html =~ "Online Users"
-      assert html =~ "validuser"
+      assert has_element?(view, "h2", "Online Users")
+      assert has_element?(view, "li", "validuser")
     end
 
     test "wraps content with Layouts.app", %{conn: conn} do
       {:ok, user} = User.new("layoutuser")
       {:ok, _position} = WorldServer.join_user(user)
 
-      {:ok, _view, html} = live(conn, ~p"/world?user_id=#{user.id}")
+      {:ok, view, _html} = live(conn, ~p"/world?user_id=#{user.id}")
 
-      assert html =~ "<header class=\"navbar"
+      assert has_element?(view, "header.navbar")
     end
   end
 
@@ -48,10 +48,10 @@ defmodule GameserverWeb.WorldLiveTest do
       {:ok, _position} = WorldServer.join_user(alice)
       {:ok, _position} = WorldServer.join_user(bob)
 
-      {:ok, _view, html} = live(conn, ~p"/world?user_id=#{alice.id}")
+      {:ok, view, _html} = live(conn, ~p"/world?user_id=#{alice.id}")
 
-      assert html =~ "alice"
-      assert html =~ "bob"
+      assert has_element?(view, "li", "alice")
+      assert has_element?(view, "li", "bob")
     end
   end
 
@@ -63,7 +63,7 @@ defmodule GameserverWeb.WorldLiveTest do
       {:ok, view, _html} = live(conn, ~p"/world?user_id=#{user.id}")
 
       assert has_element?(view, "#player-hp")
-      assert render(element(view, "#player-hp")) =~ "10/10"
+      assert has_element?(view, "#player-hp", "10/10")
     end
 
     test "updates hp when player entity changes", %{conn: conn} do
@@ -79,7 +79,7 @@ defmodule GameserverWeb.WorldLiveTest do
           %{entity | stats: %{entity.stats | hp: 7}}
         end)
 
-      assert render(element(view, "#player-hp")) =~ "7/10"
+      assert has_element?(view, "#player-hp", "7/10")
     end
   end
 
@@ -88,18 +88,18 @@ defmodule GameserverWeb.WorldLiveTest do
       {:ok, user} = User.new("mapplayer")
       {:ok, _position} = WorldServer.join_user(user)
 
-      {:ok, _view, html} = live(conn, ~p"/world?user_id=#{user.id}")
+      {:ok, view, _html} = live(conn, ~p"/world?user_id=#{user.id}")
 
-      assert html =~ "@"
+      assert has_element?(view, "[data-entity=player]", "@")
     end
 
     test "shows player position coordinates", %{conn: conn} do
       {:ok, user} = User.new("posplayer")
       {:ok, {x, y}} = WorldServer.join_user(user)
 
-      {:ok, _view, html} = live(conn, ~p"/world?user_id=#{user.id}")
+      {:ok, view, _html} = live(conn, ~p"/world?user_id=#{user.id}")
 
-      assert html =~ "Position: {#{x}, #{y}}"
+      assert has_element?(view, "#player-position", "Position: {#{x}, #{y}}")
     end
 
     test "renders other player on the map", %{conn: conn} do
@@ -108,10 +108,10 @@ defmodule GameserverWeb.WorldLiveTest do
       {:ok, _position} = WorldServer.join_user(alice)
       {:ok, _position} = WorldServer.join_user(bob)
 
-      {:ok, _view, html} = live(conn, ~p"/world?user_id=#{alice.id}")
+      {:ok, view, _html} = live(conn, ~p"/world?user_id=#{alice.id}")
 
       # Both players share the spawn point, but we should see at least one @
-      assert html =~ "@"
+      assert has_element?(view, "[data-entity=player]", "@")
     end
 
     test "renders other player in distinct style", %{conn: conn} do
@@ -123,10 +123,10 @@ defmodule GameserverWeb.WorldLiveTest do
       # Move bob so he's not on the same tile as alice
       WorldServer.move(bob.id, :east)
 
-      {:ok, _view, html} = live(conn, ~p"/world?user_id=#{alice.id}")
+      {:ok, view, _html} = live(conn, ~p"/world?user_id=#{alice.id}")
 
-      assert html =~ "text-yellow-300"
-      assert html =~ "text-cyan-300"
+      assert has_element?(view, "[data-entity=player]")
+      assert has_element?(view, "[data-entity=other-player]")
     end
   end
 
@@ -159,17 +159,17 @@ defmodule GameserverWeb.WorldLiveTest do
       {:ok, alice} = User.new("pubsubalice")
       {:ok, _position} = WorldServer.join_user(alice)
 
-      {:ok, view, html} = live(conn, ~p"/world?user_id=#{alice.id}")
-      assert html =~ "pubsubalice"
-      refute html =~ "newuser"
+      {:ok, view, _html} = live(conn, ~p"/world?user_id=#{alice.id}")
+      assert has_element?(view, "li", "pubsubalice")
+      refute has_element?(view, "li", "newuser")
 
       # Simulate another user joining
       {:ok, bob} = User.new("newuser")
       {:ok, _position} = WorldServer.join_user(bob)
 
       # Wait for pubsub update
-      html = render(view)
-      assert html =~ "newuser"
+      render(view)
+      assert has_element?(view, "li", "newuser")
     end
 
     test "updates other player position on movement", %{conn: conn} do
@@ -183,8 +183,9 @@ defmodule GameserverWeb.WorldLiveTest do
       # Move bob east — alice's view should update
       WorldServer.move(bob.id, :east)
 
-      html = render(view)
-      assert html =~ "text-cyan-300"
+      # Wait for pubsub update
+      render(view)
+      assert has_element?(view, "[data-entity=other-player]")
     end
 
     test "updates when user leaves", %{conn: conn} do
@@ -193,15 +194,15 @@ defmodule GameserverWeb.WorldLiveTest do
       {:ok, _position} = WorldServer.join_user(alice)
       {:ok, _position} = WorldServer.join_user(bob)
 
-      {:ok, view, html} = live(conn, ~p"/world?user_id=#{alice.id}")
-      assert html =~ "leavinguser"
+      {:ok, view, _html} = live(conn, ~p"/world?user_id=#{alice.id}")
+      assert has_element?(view, "li", "leavinguser")
 
       # Bob leaves
       :ok = WorldServer.leave(bob.id)
 
       # Wait for pubsub update
-      html = render(view)
-      refute html =~ "leavinguser"
+      render(view)
+      refute has_element?(view, "li", "leavinguser")
     end
   end
 
@@ -214,11 +215,10 @@ defmodule GameserverWeb.WorldLiveTest do
       mob = Entity.new(name: "goblin", type: :mob, pos: {3, 2})
       {:ok, _pos} = WorldServer.join_entity(mob)
 
-      {:ok, _view, html} = live(conn, ~p"/world?user_id=#{user.id}")
+      {:ok, view, _html} = live(conn, ~p"/world?user_id=#{user.id}")
 
       # mob rendered as first letter of name in red
-      assert html =~ "text-red-400"
-      assert html =~ "g"
+      assert has_element?(view, "[data-entity=mob]", "g")
     end
 
     test "mob appears when it joins after mount", %{conn: conn} do
@@ -231,7 +231,7 @@ defmodule GameserverWeb.WorldLiveTest do
       mob = Entity.new(name: "goblin", type: :mob, pos: {11, 2})
       {:ok, _pos} = WorldServer.join_entity(mob)
 
-      assert render(view) =~ "text-red-400"
+      assert has_element?(view, "[data-entity=mob]")
     end
 
     test "mob disappears when it leaves", %{conn: conn} do
@@ -244,15 +244,12 @@ defmodule GameserverWeb.WorldLiveTest do
 
       {:ok, view, _html} = live(conn, ~p"/world?user_id=#{user.id}")
 
-      before_html = render(view)
-      red_count_before = length(String.split(before_html, "text-red-400")) - 1
+      assert has_element?(view, ~s|[data-entity=mob][phx-value-x="11"][phx-value-y="3"]|)
 
       WorldServer.leave(mob.id)
 
-      after_html = render(view)
-      red_count_after = length(String.split(after_html, "text-red-400")) - 1
-
-      assert red_count_after < red_count_before
+      render(view)
+      refute has_element?(view, ~s|[data-entity=mob][phx-value-x="11"][phx-value-y="3"]|)
     end
   end
 
@@ -264,7 +261,7 @@ defmodule GameserverWeb.WorldLiveTest do
 
       # move east (d key) from spawn {1,1} to {2,1}
       render_keydown(view, "keydown", %{"key" => "d"})
-      assert render(view) =~ "Position: {#{px + 1}, #{py}}"
+      assert has_element?(view, "#player-position", "Position: {#{px + 1}, #{py}}")
     end
 
     test "arrow keys move the player", %{conn: conn} do
@@ -273,7 +270,7 @@ defmodule GameserverWeb.WorldLiveTest do
       {:ok, view, _html} = live(conn, ~p"/world?user_id=#{user.id}")
 
       render_keydown(view, "keydown", %{"key" => "ArrowRight"})
-      assert render(view) =~ "Position: {#{px + 1}, #{py}}"
+      assert has_element?(view, "#player-position", "Position: {#{px + 1}, #{py}}")
     end
 
     test "unmapped keys don't crash", %{conn: conn} do
@@ -283,7 +280,7 @@ defmodule GameserverWeb.WorldLiveTest do
 
       render_keydown(view, "keydown", %{"key" => "x"})
 
-      assert render(view) =~ "Online Users"
+      assert has_element?(view, "h2", "Online Users")
     end
   end
 
@@ -306,7 +303,7 @@ defmodule GameserverWeb.WorldLiveTest do
       )
 
       assert has_element?(view, "#combat-log")
-      assert render(view) =~ "You hit goblin for 1 (9 hp)"
+      assert has_element?(view, "#combat-log div", "You hit goblin for 1 (9 hp)")
     end
 
     test "shows message when mob attacks player", %{conn: conn} do
@@ -326,7 +323,7 @@ defmodule GameserverWeb.WorldLiveTest do
          %CombatEvent{attacker_id: mob.id, defender_id: user.id, damage: 2, defender_hp: 8}}
       )
 
-      assert render(view) =~ "spider hits you for 2 (8 hp)"
+      assert has_element?(view, "#combat-log div", "spider hits you for 2 (8 hp)")
     end
 
     test "combat log has auto-scroll hook", %{conn: conn} do
@@ -377,7 +374,7 @@ defmodule GameserverWeb.WorldLiveTest do
         "y" => to_string(py)
       })
 
-      assert render(view) =~ "Position: {#{px + 1}, #{py}}"
+      assert has_element?(view, "#player-position", "Position: {#{px + 1}, #{py}}")
     end
 
     test "clicking own tile doesn't crash", %{conn: conn} do
@@ -387,7 +384,7 @@ defmodule GameserverWeb.WorldLiveTest do
 
       render_click(view, "tile-click", %{"x" => to_string(px), "y" => to_string(py)})
 
-      assert render(view) =~ "Online Users"
+      assert has_element?(view, "h2", "Online Users")
     end
 
     test "clicking into a wall doesn't move", %{conn: conn} do
@@ -401,8 +398,7 @@ defmodule GameserverWeb.WorldLiveTest do
         "y" => to_string(py - 1)
       })
 
-      html = render(view)
-      assert html =~ "Position: {#{px}, #{py}}"
+      assert has_element?(view, "#player-position", "Position: {#{px}, #{py}}")
     end
   end
 end
