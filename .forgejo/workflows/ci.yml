@@ -36,7 +36,7 @@ jobs:
       - run: mix test
 
   dialyzer:
-    runs-on: codeberg-medium
+    runs-on: codeberg-small
     container:
       image: ghcr.io/catthehacker/ubuntu:act-latest
     env:
