@@ -9,6 +9,7 @@
               <%= cond do %>
                 <% my_position(assigns) == {x, y} -> %>
                   <span
+                    data-entity="player"
                     class="text-yellow-300 font-bold cursor-pointer"
                     phx-click="tile-click"
                     phx-value-x={x}
@@ -18,6 +19,7 @@
                   </span>
                 <% mob_symbol != nil -> %>
                   <span
+                    data-entity="mob"
                     class="text-red-400 font-bold cursor-pointer"
                     phx-click="tile-click"
                     phx-value-x={x}
@@ -27,6 +29,7 @@
                   </span>
                 <% Entities.players_at(@entities, {x, y}) != [] -> %>
                   <span
+                    data-entity="other-player"
                     class="text-cyan-300 font-bold cursor-pointer"
                     phx-click="tile-click"
                     phx-value-x={x}
@@ -48,7 +51,7 @@
           </div>
         <% end %>
       </div>
-      <div class="mt-2 font-mono text-sm text-gray-400">
+      <div id="player-position" class="mt-2 font-mono text-sm text-gray-400">
         <% {px, py} = my_position(assigns) %> Position: {"{#{px}, #{py}}"}
       </div>
       <div id="player-hp" class="mt-2 font-mono text-sm text-gray-300">
