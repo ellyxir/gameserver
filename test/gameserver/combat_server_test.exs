@@ -125,5 +125,22 @@ defmodule Gameserver.CombatServerTest do
       assert event.damage == attacker.stats.attack_power
       assert event.defender_hp == mob.stats.hp - attacker.stats.attack_power
     end
+
+    test "perform_attack modifies defender" do
+      attacker = Entity.new(name: "alice", type: :user)
+      defender = Entity.new(name: "goblin", type: :mob, pos: {2, 1})
+      {:ok, update_fn} = CombatServer.perform_attack(attacker, defender)
+      updated_defender = update_fn.(defender)
+      assert updated_defender.stats.hp < updated_defender.stats.max_hp
+    end
+
+    test "perform_attack clamps defender hp at zero" do
+      attacker = Entity.new(name: "alice", type: :user)
+      defender = Entity.new(name: "goblin", type: :mob, pos: {2, 1})
+      defender = %{defender | stats: %{defender.stats | hp: 1, attack_power: 5}}
+      {:ok, update_fn} = CombatServer.perform_attack(attacker, defender)
+      updated_defender = update_fn.(defender)
+      assert updated_defender.stats.hp == 0
+    end
   end
 end

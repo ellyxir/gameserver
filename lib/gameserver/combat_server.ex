@@ -77,21 +77,38 @@ defmodule Gameserver.CombatServer do
     with {:ok, attacker} <- EntityServer.get_entity(attacker_id, entity_server),
          {:ok, defender} <- EntityServer.get_entity(defender_id, entity_server),
          :ok <- check_adjacent(attacker_id, defender_id, world_server) do
-      damage = attacker.stats.attack_power
+      defender_hp_before = defender.stats.hp
 
-      {:ok, updated} =
+      {:ok, update_fn} = perform_attack(attacker, defender)
+
+      {:ok, defender} =
         EntityServer.update_entity(
           defender_id,
-          fn e -> %{e | stats: %{e.stats | hp: max(0, e.stats.hp - damage)}} end,
+          update_fn,
           entity_server
         )
 
-      broadcast_combat_event(attacker, defender, damage, updated.stats.hp)
+      defender_hp_after = defender.stats.hp
+      damage_taken = defender_hp_before - defender_hp_after
+      broadcast_combat_event(attacker, defender, damage_taken, defender_hp_after)
 
       {:reply, {:ok, {:attack, @attack_cooldown_ms}}, state}
     else
       {:error, reason} -> {:reply, {:error, reason}, state}
     end
+  end
+
+  @doc """
+  performs attack, returns the updated attacker and defender entities
+  note this is a pure function, doesn't update the entityserver
+  """
+  @spec perform_attack(Entity.t(), Entity.t()) :: {:ok, EntityServer.entity_transform_function()}
+  def perform_attack(%Entity{} = attacker, %Entity{} = _defender) do
+    damage = attacker.stats.attack_power
+
+    update_fn = fn e -> %{e | stats: %{e.stats | hp: max(0, e.stats.hp - damage)}} end
+
+    {:ok, update_fn}
   end
 
   @spec broadcast_combat_event(Entity.t(), Entity.t(), non_neg_integer(), non_neg_integer()) ::
