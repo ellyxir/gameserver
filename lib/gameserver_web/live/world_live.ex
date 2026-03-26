@@ -9,7 +9,9 @@ defmodule GameserverWeb.WorldLive do
 
   alias Gameserver.CombatServer
   alias Gameserver.Entity
+  alias Gameserver.EntityServer
   alias Gameserver.Map, as: GameMap
+  alias Gameserver.Stats
   alias Gameserver.UUID
   alias Gameserver.WorldServer
   alias GameserverWeb.Entities
@@ -24,6 +26,7 @@ defmodule GameserverWeb.WorldLive do
           Phoenix.PubSub.subscribe(Gameserver.PubSub, WorldServer.presence_topic())
           Phoenix.PubSub.subscribe(Gameserver.PubSub, WorldServer.movement_topic())
           Phoenix.PubSub.subscribe(Gameserver.PubSub, CombatServer.combat_topic())
+          Phoenix.PubSub.subscribe(Gameserver.PubSub, EntityServer.entity_topic())
         end
 
         nodes = WorldServer.world_nodes()
@@ -38,7 +41,8 @@ defmodule GameserverWeb.WorldLive do
              user_id: user_id,
              username: username,
              map_cells: map_cells,
-             entities: entities
+             entities: entities,
+             player_stats: fetch_player_stats(user_id)
            )
            |> stream(:combat_log, [])}
         else
@@ -125,6 +129,17 @@ defmodule GameserverWeb.WorldLive do
     {:noreply, stream_insert(socket, :combat_log, entry)}
   end
 
+  def handle_info(
+        {:entity_updated, %Entity{id: id, stats: stats}},
+        %{assigns: %{user_id: id}} = socket
+      ) do
+    {:noreply, assign(socket, :player_stats, stats)}
+  end
+
+  def handle_info({:entity_updated, _entity}, socket), do: {:noreply, socket}
+  def handle_info({:entity_created, _entity}, socket), do: {:noreply, socket}
+  def handle_info({:entity_removed, _id}, socket), do: {:noreply, socket}
+
   def handle_info({:entity_left, id}, socket) do
     if id == socket.assigns.user_id do
       {:noreply, push_navigate(socket, to: ~p"/game")}
@@ -142,6 +157,14 @@ defmodule GameserverWeb.WorldLive do
 
       _ ->
         :ok
+    end
+  end
+
+  @spec fetch_player_stats(UUID.t()) :: Stats.t()
+  defp fetch_player_stats(user_id) do
+    case EntityServer.get_entity(user_id) do
+      {:ok, entity} -> entity.stats
+      {:error, :not_found} -> %Stats{}
     end
   end
 
