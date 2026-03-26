@@ -326,6 +326,15 @@ defmodule GameserverWeb.WorldLiveTest do
       assert render(view) =~ "spider hits you for 2 (8 hp)"
     end
 
+    test "combat log has auto-scroll hook", %{conn: conn} do
+      {:ok, user} = User.new("scrolluser")
+      {:ok, _pos} = WorldServer.join_user(user)
+
+      {:ok, view, _html} = live(conn, ~p"/world?user_id=#{user.id}")
+
+      assert has_element?(view, "#combat-log[phx-hook=ScrollBottom]")
+    end
+
     test "shows kill message when defender hp reaches zero", %{conn: conn} do
       {:ok, user} = User.new("slayer")
       {:ok, _pos} = WorldServer.join_user(user)
