@@ -75,6 +75,9 @@ defmodule Gameserver.MobTest do
       {:ok, pid} = Mob.start_link(mob)
       _ = :sys.get_state(pid)
 
+      # subscribe to combat events so we can wait for the retaliation
+      Phoenix.PubSub.subscribe(Gameserver.PubSub, CombatServer.combat_topic())
+
       event = %CombatEvent{
         attacker_id: player_id,
         defender_id: mob_id,
@@ -83,11 +86,9 @@ defmodule Gameserver.MobTest do
       }
 
       send(pid, {:combat_event, event})
-      _ = :sys.get_state(pid)
 
-      # manually fire the attack
-      send(pid, :attack_target)
-      _ = :sys.get_state(pid)
+      # wait for the mob's retaliation attack (fires via 0ms timer)
+      assert_receive {:combat_event, %CombatEvent{attacker_id: ^mob_id, defender_id: ^player_id}}
 
       {:ok, player_entity} = EntityServer.get_entity(player_id, ctx.entity_server)
       assert player_entity.stats.hp == 9
