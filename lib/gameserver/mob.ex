@@ -84,6 +84,10 @@ defmodule Gameserver.Mob do
     end
   end
 
+  def handle_info(:attack_target, %{aggro_target: nil} = state) do
+    {:noreply, %{state | attack_timer: nil}}
+  end
+
   @impl GenServer
   def handle_info({:combat_event, _event}, state) do
     {:noreply, state}

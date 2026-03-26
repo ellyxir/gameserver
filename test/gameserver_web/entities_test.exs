@@ -51,7 +51,7 @@ defmodule GameserverWeb.EntitiesTest do
 
   describe "get_position/2" do
     test "returns :error for unknown id" do
-      assert Entities.get_position(%Entities{}, "nope") == :error
+      assert Entities.get_position(%Entities{}, "nope") == {:error, :not_found}
     end
   end
 
@@ -99,6 +99,18 @@ defmodule GameserverWeb.EntitiesTest do
     test "does not match player positions" do
       entities = make_entities()
       assert Entities.mob_symbol_at(entities, {1, 1}) == nil
+    end
+  end
+
+  describe "get_name/2" do
+    test "returns name for known entity" do
+      entities = make_entities()
+      assert Entities.get_name(entities, "id-a") == {:ok, "alice"}
+      assert Entities.get_name(entities, "id-g") == {:ok, "goblin"}
+    end
+
+    test "returns :error for unknown id" do
+      assert Entities.get_name(%Entities{}, "nope") == {:error, :not_found}
     end
   end
 

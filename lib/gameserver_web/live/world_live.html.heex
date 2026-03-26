@@ -51,6 +51,15 @@
       <div class="mt-2 font-mono text-sm text-gray-400">
         <% {px, py} = my_position(assigns) %> Position: {"{#{px}, #{py}}"}
       </div>
+      <div
+        id="combat-log"
+        phx-update="stream"
+        class="mt-2 font-mono text-sm text-gray-300 bg-gray-800 rounded p-3 h-36 overflow-y-auto"
+      >
+        <div :for={{id, entry} <- @streams.combat_log} id={id} class="py-0.5">
+          {entry.message}
+        </div>
+      </div>
     </div>
 
     <div>
