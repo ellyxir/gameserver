@@ -6,6 +6,8 @@ defmodule Gameserver.Map do
   Origin `(0, 0)` is top-left, with X increasing rightward and Y increasing downward.
   """
 
+  alias Gameserver.Map.Corridor
+
   defstruct [:width, :height, :tiles]
 
   @typedoc "An {x, y} coordinate pair"
@@ -143,7 +145,9 @@ defmodule Gameserver.Map do
     end
   end
 
-  @typep room() :: {coord(), width(), height()}
+  @typedoc "A room defined by its top-left coordinate, width, and height."
+  @type room() :: {coord(), width(), height()}
+
   @typep rand_state() :: :rand.state()
 
   @room_padding 2
@@ -205,15 +209,20 @@ defmodule Gameserver.Map do
     end
 
     # generate non-overlapping rooms based on the config
-    {rooms, _rand} = place_rooms(config, rand)
+    {rooms, rand} = place_rooms(config, rand)
 
     # make a new grid, filled with just walls
     new_grid = new(width, height)
 
-    # carve out each room into the `new_grid` that have floor tiles
-    Enum.reduce(rooms, new_grid, fn {{rx, ry}, rw, rh}, map ->
-      fill_rect(map, {rx, ry}, rw, rh, :floor)
-    end)
+    # carve out each room into the grid as floor tiles
+    map =
+      Enum.reduce(rooms, new_grid, fn {{rx, ry}, rw, rh}, acc ->
+        fill_rect(acc, {rx, ry}, rw, rh, :floor)
+      end)
+
+    # connect rooms with L-shaped corridors via MST
+    {map, _rand} = Corridor.connect_rooms(rooms, map, rand)
+    map
   end
 
   @spec place_rooms(RoomConfig.t(), rand_state()) :: {[room()], rand_state()}

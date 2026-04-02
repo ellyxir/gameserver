@@ -345,10 +345,7 @@ defmodule Gameserver.MapTest do
       assert floor_count == 0, "expected no rooms on a grid too small to fit them"
     end
 
-    test "rooms have wall padding between them" do
-      # with no corridors yet, each room is an isolated floor rectangle.
-      # flood fill should find multiple separate floor regions, proving
-      # rooms don't touch.
+    test "all rooms are connected via corridors" do
       map = GameMap.generate(50, 50, seed: 42, room_count: 6)
 
       floor_tiles =
@@ -360,7 +357,7 @@ defmodule Gameserver.MapTest do
       floor_set = MapSet.new(floor_tiles)
       regions = count_regions(floor_set)
 
-      assert regions >= 2, "expected multiple isolated rooms, got #{regions}"
+      assert regions == 1, "expected all rooms connected, got #{regions} regions"
     end
   end
 
