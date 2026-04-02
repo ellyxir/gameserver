@@ -309,6 +309,12 @@ defmodule Gameserver.MapTest do
       assert map.height == 20
     end
 
+    test "populates rooms on the struct" do
+      map = GameMap.generate(40, 40, seed: 42, room_count: 5)
+      assert is_list(map.rooms)
+      assert length(map.rooms) <= 5
+    end
+
     test "contains floor tiles from carved rooms" do
       map = GameMap.generate(40, 40, seed: 42)
 
@@ -393,6 +399,20 @@ defmodule Gameserver.MapTest do
       regions = count_regions(floor_set)
 
       assert regions == 1, "expected all rooms connected, got #{regions} regions"
+    end
+  end
+
+  describe "random_tile_in_room/2" do
+    test "returns a floor tile within the room bounds" do
+      map = GameMap.generate(40, 40, seed: 42, room_count: 5)
+      [room | _] = map.rooms
+      {{rx, ry}, rw, rh} = room
+
+      {x, y} = GameMap.random_tile_in_room(map, room)
+
+      assert x >= rx and x < rx + rw
+      assert y >= ry and y < ry + rh
+      assert {:ok, :floor} = GameMap.get_tile(map, {x, y})
     end
   end
 

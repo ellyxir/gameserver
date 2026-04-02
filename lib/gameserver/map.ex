@@ -8,7 +8,7 @@ defmodule Gameserver.Map do
 
   alias Gameserver.Map.Corridor
 
-  defstruct [:width, :height, :tiles]
+  defstruct [:width, :height, :tiles, rooms: []]
 
   @typedoc "An {x, y} coordinate pair"
   @type coord() :: {integer(), integer()}
@@ -42,7 +42,8 @@ defmodule Gameserver.Map do
   @type t() :: %__MODULE__{
           width: width(),
           height: height(),
-          tiles: %{coord() => tile()}
+          tiles: %{coord() => tile()},
+          rooms: [room()]
         }
 
   @doc """
@@ -212,19 +213,21 @@ defmodule Gameserver.Map do
     {rooms, rand} = place_rooms(config, rand)
 
     # make a new grid, filled with just walls
-    new_grid = new(width, height)
+    game_map = new(width, height)
 
     # carve out each room into the grid as floor tiles
-    map =
-      Enum.reduce(rooms, new_grid, fn {{rx, ry}, rw, rh}, acc ->
+    game_map =
+      Enum.reduce(rooms, game_map, fn {{rx, ry}, rw, rh}, acc ->
         fill_rect(acc, {rx, ry}, rw, rh, :floor)
       end)
 
     # connect rooms with L-shaped corridors via MST
-    {map, _rand} = Corridor.connect_rooms(rooms, map, rand)
+    {game_map, _rand} = Corridor.connect_rooms(rooms, game_map, rand)
 
     # place stairs: upstairs in first room, downstairs in farthest room
-    place_stairs(map, rooms)
+    game_map = place_stairs(game_map, rooms)
+
+    %{game_map | rooms: rooms}
   end
 
   @spec place_stairs(t(), [room()]) :: t()
@@ -250,6 +253,26 @@ defmodule Gameserver.Map do
 
     {pos, w, h} = farthest
     set_tile_in_room!(map, pos, w, h, :downstairs)
+  end
+
+  @doc """
+  Returns a random floor tile coordinate within the given room.
+
+  Only considers tiles that are `:floor` (excludes stairs).
+  Raises if no floor tile exists in the room.
+  """
+  @spec random_tile_in_room(t(), room()) :: coord()
+  def random_tile_in_room(%__MODULE__{} = map, {{rx, ry}, rw, rh}) do
+    floor_tiles =
+      for x <- rx..(rx + rw - 1),
+          y <- ry..(ry + rh - 1),
+          get_tile!(map, {x, y}) == :floor,
+          do: {x, y}
+
+    case floor_tiles do
+      [] -> raise ArgumentError, "no floor tile in room at {#{rx}, #{ry}} #{rw}x#{rh}"
+      tiles -> Enum.random(tiles)
+    end
   end
 
   @spec room_center(room()) :: coord()
