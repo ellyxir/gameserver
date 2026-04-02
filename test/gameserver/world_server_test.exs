@@ -8,12 +8,14 @@ defmodule Gameserver.WorldServerTest do
   alias Gameserver.UUID
   alias Gameserver.WorldServer
 
+  alias Gameserver.Map, as: GameMap
+
   setup do
     entity_server = start_supervised!({EntityServer, name: nil})
 
     pid =
       start_supervised!(
-        {WorldServer, name: nil, entity_server: entity_server},
+        {WorldServer, name: nil, entity_server: entity_server, map: GameMap.sample_dungeon()},
         id: :world_server
       )
 

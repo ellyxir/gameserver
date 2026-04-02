@@ -12,7 +12,10 @@ defmodule Gameserver.MobServerTest do
 
     server =
       start_supervised!(
-        {WorldServer, name: :"world_#{System.unique_integer()}", entity_server: entity_server},
+        {WorldServer,
+         name: :"world_#{System.unique_integer()}",
+         entity_server: entity_server,
+         map: Gameserver.Map.sample_dungeon()},
         id: :world_server
       )
 

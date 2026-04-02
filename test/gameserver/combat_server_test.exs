@@ -5,6 +5,7 @@ defmodule Gameserver.CombatServerTest do
   alias Gameserver.CombatServer
   alias Gameserver.Entity
   alias Gameserver.EntityServer
+  alias Gameserver.Map, as: GameMap
   alias Gameserver.User
   alias Gameserver.UUID
   alias Gameserver.WorldServer
@@ -14,7 +15,7 @@ defmodule Gameserver.CombatServerTest do
 
     world_server =
       start_supervised!(
-        {WorldServer, name: nil, entity_server: entity_server},
+        {WorldServer, name: nil, entity_server: entity_server, map: GameMap.sample_dungeon()},
         id: :world_server
       )
 

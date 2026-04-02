@@ -174,7 +174,8 @@ defmodule Gameserver.WorldServer do
   @impl GenServer
   def init(opts) do
     entity_server = Keyword.get(opts, :entity_server, EntityServer)
-    {:ok, %__MODULE__{map: GameMap.sample_dungeon(), entity_server: entity_server}}
+    map = Keyword.get(opts, :map, GameMap.sample_dungeon())
+    {:ok, %__MODULE__{map: map, entity_server: entity_server}}
   end
 
   @impl GenServer
