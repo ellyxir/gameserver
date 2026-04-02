@@ -171,10 +171,13 @@ defmodule Gameserver.WorldServer do
 
   # Server callbacks
 
+  @default_map_width 30
+  @default_map_height 30
+
   @impl GenServer
   def init(opts) do
     entity_server = Keyword.get(opts, :entity_server, EntityServer)
-    map = Keyword.get(opts, :map, GameMap.sample_dungeon())
+    map = Keyword.get(opts, :map, GameMap.generate(@default_map_width, @default_map_height))
     {:ok, %__MODULE__{map: map, entity_server: entity_server}}
   end
 

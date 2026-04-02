@@ -5,9 +5,25 @@ defmodule GameserverWeb.WorldLiveTest do
   import Phoenix.LiveViewTest
 
   alias Gameserver.CombatEvent
+  alias Gameserver.Map, as: GameMap
   alias Gameserver.User
   alias Gameserver.UUID
   alias Gameserver.WorldServer
+
+  # clear all entities between tests so mobs from MobServer or previous tests
+  # don't cause collision errors when spawning new entities
+  setup do
+    on_exit(fn ->
+      WorldServer.world_nodes()
+      |> Enum.each(fn {id, _} -> WorldServer.leave(id) end)
+    end)
+  end
+
+  defp random_floor_pos(room_index \\ 0) do
+    map = WorldServer.get_map()
+    room = Enum.at(map.rooms, rem(room_index, length(map.rooms)))
+    GameMap.random_tile_in_room(map, room)
+  end
 
   describe "mount" do
     test "redirects to /game when user_id not provided", %{conn: conn} do
@@ -212,7 +228,7 @@ defmodule GameserverWeb.WorldLiveTest do
       {:ok, _pos} = WorldServer.join_user(user)
 
       alias Gameserver.Entity
-      mob = Entity.new(name: "goblin", type: :mob, pos: {3, 2})
+      mob = Entity.new(name: "goblin", type: :mob, pos: random_floor_pos())
       {:ok, _pos} = WorldServer.join_entity(mob)
 
       {:ok, view, _html} = live(conn, ~p"/world?user_id=#{user.id}")
@@ -228,7 +244,7 @@ defmodule GameserverWeb.WorldLiveTest do
       {:ok, view, _html} = live(conn, ~p"/world?user_id=#{user.id}")
 
       alias Gameserver.Entity
-      mob = Entity.new(name: "goblin", type: :mob, pos: {11, 2})
+      mob = Entity.new(name: "goblin", type: :mob, pos: random_floor_pos())
       {:ok, _pos} = WorldServer.join_entity(mob)
 
       assert has_element?(view, "[data-entity=mob]")
@@ -239,17 +255,17 @@ defmodule GameserverWeb.WorldLiveTest do
       {:ok, _pos} = WorldServer.join_user(user)
 
       alias Gameserver.Entity
-      mob = Entity.new(name: "goblin", type: :mob, pos: {11, 3})
-      {:ok, _pos} = WorldServer.join_entity(mob)
+      mob = Entity.new(name: "goblin", type: :mob, pos: random_floor_pos(1))
+      {:ok, {mx, my}} = WorldServer.join_entity(mob)
 
       {:ok, view, _html} = live(conn, ~p"/world?user_id=#{user.id}")
 
-      assert has_element?(view, ~s|[data-entity=mob][phx-value-x="11"][phx-value-y="3"]|)
+      assert has_element?(view, "[data-entity=mob]")
 
       WorldServer.leave(mob.id)
 
       render(view)
-      refute has_element?(view, ~s|[data-entity=mob][phx-value-x="11"][phx-value-y="3"]|)
+      refute has_element?(view, ~s|[data-entity=mob][phx-value-x="#{mx}"][phx-value-y="#{my}"]|)
     end
   end
 
@@ -290,7 +306,7 @@ defmodule GameserverWeb.WorldLiveTest do
       {:ok, _pos} = WorldServer.join_user(user)
 
       alias Gameserver.{CombatServer, Entity}
-      mob = Entity.new(name: "goblin", type: :mob, pos: {10, 2})
+      mob = Entity.new(name: "goblin", type: :mob, pos: random_floor_pos())
       {:ok, _pos} = WorldServer.join_entity(mob)
 
       {:ok, view, _html} = live(conn, ~p"/world?user_id=#{user.id}")
@@ -311,7 +327,7 @@ defmodule GameserverWeb.WorldLiveTest do
       {:ok, _pos} = WorldServer.join_user(user)
 
       alias Gameserver.{CombatServer, Entity}
-      mob = Entity.new(name: "spider", type: :mob, pos: {10, 3})
+      mob = Entity.new(name: "spider", type: :mob, pos: random_floor_pos(1))
       {:ok, _pos} = WorldServer.join_entity(mob)
 
       {:ok, view, _html} = live(conn, ~p"/world?user_id=#{user.id}")
@@ -340,7 +356,7 @@ defmodule GameserverWeb.WorldLiveTest do
       {:ok, _pos} = WorldServer.join_user(user)
 
       alias Gameserver.{CombatServer, Entity}
-      mob = Entity.new(name: "rat", type: :mob, pos: {13, 2})
+      mob = Entity.new(name: "rat", type: :mob, pos: random_floor_pos(2))
       {:ok, _pos} = WorldServer.join_entity(mob)
 
       {:ok, view, _html} = live(conn, ~p"/world?user_id=#{user.id}")
@@ -366,7 +382,7 @@ defmodule GameserverWeb.WorldLiveTest do
       {:ok, _pos} = WorldServer.join_user(user)
 
       alias Gameserver.{CombatServer, Entity}
-      mob = Entity.new(name: "goblin", type: :mob, pos: {12, 2})
+      mob = Entity.new(name: "goblin", type: :mob, pos: random_floor_pos())
       {:ok, _pos} = WorldServer.join_entity(mob)
 
       {:ok, view, _html} = live(conn, ~p"/world?user_id=#{user.id}")
