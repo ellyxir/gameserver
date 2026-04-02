@@ -9,11 +9,7 @@ defmodule Gameserver.MobServer do
   alias Gameserver.UUID
   alias Gameserver.WorldServer
 
-  @mobs [
-    {"goblin", {12, 3}},
-    {"spider", {7, 11}},
-    {"rat", {3, 3}}
-  ]
+  @mob_names ["goblin", "spider", "rat"]
 
   @doc "Starts the MobServer. Accepts `:world_server` option, defaults to WorldServer."
   @spec start_link(keyword()) :: Supervisor.on_start()
@@ -28,9 +24,14 @@ defmodule Gameserver.MobServer do
 
     # can't call DynamicSupervisor.start_child/2 from init since we're not up yet
     # so we spawn a child process to do this
-    # using Process.send/3 has issues, seems like GenServer eats it up
     spawn_link(fn ->
-      Enum.each(@mobs, fn {name, pos} ->
+      map = %GameMap{rooms: rooms} = WorldServer.get_map(world_server)
+
+      # distribute mobs across rooms, cycling through available rooms
+      @mob_names
+      |> Enum.zip(Stream.cycle(rooms))
+      |> Enum.each(fn {name, room} ->
+        pos = GameMap.random_tile_in_room(map, room)
         {:ok, _pid} = spawn_mob(sup, name, pos, world_server)
       end)
     end)
