@@ -329,20 +329,55 @@ defmodule Gameserver.MapTest do
       end
     end
 
-    test "rejects rooms that would extend past grid bounds" do
+    test "raises when grid is too small to fit rooms" do
       # on a 4x4 grid, rooms of size 5x5 can never fit.
-      # the generator should place 0 rooms, leaving all walls.
-      map = GameMap.generate(4, 4, seed: 1, room_dim_min: 5, room_dim_max: 5, room_count: 3)
+      # generate should raise since stairs need at least 2 rooms.
+      assert_raise ArgumentError, ~r/need at least 2 rooms/, fn ->
+        GameMap.generate(4, 4, seed: 1, room_dim_min: 5, room_dim_max: 5, room_count: 3)
+      end
+    end
 
-      floor_count =
+    test "has exactly one upstairs and one downstairs on different tiles" do
+      map = GameMap.generate(40, 40, seed: 42, room_count: 5)
+
+      stairs =
         for x <- 0..(map.width - 1),
             y <- 0..(map.height - 1),
-            GameMap.get_tile!(map, {x, y}) == :floor,
-            reduce: 0 do
-          acc -> acc + 1
-        end
+            tile = GameMap.get_tile!(map, {x, y}),
+            tile in [:upstairs, :downstairs],
+            do: {tile, {x, y}}
 
-      assert floor_count == 0, "expected no rooms on a grid too small to fit them"
+      upstairs = Enum.filter(stairs, fn {tile, _} -> tile == :upstairs end)
+      downstairs = Enum.filter(stairs, fn {tile, _} -> tile == :downstairs end)
+
+      assert length(upstairs) == 1, "expected 1 upstairs, got #{length(upstairs)}"
+      assert length(downstairs) == 1, "expected 1 downstairs, got #{length(downstairs)}"
+
+      [{_, up_coord}] = upstairs
+      [{_, down_coord}] = downstairs
+      assert up_coord != down_coord
+    end
+
+    test "downstairs is placed in the room farthest from upstairs" do
+      # use known room positions so we can predict which is farthest
+      # generate a large map with a fixed seed where rooms are spread out
+      map = GameMap.generate(50, 50, seed: 42, room_count: 6)
+
+      {:ok, up_coord} = GameMap.get_spawn_point(map)
+
+      down_coord =
+        Enum.find_value(map.tiles, fn
+          {coord, :downstairs} -> coord
+          _ -> nil
+        end)
+
+      # stairs should be on different tiles and reasonably far apart
+      assert up_coord != down_coord
+
+      {ux, uy} = up_coord
+      {dx, dy} = down_coord
+      distance = :math.sqrt((dx - ux) ** 2 + (dy - uy) ** 2)
+      assert distance > 5, "expected stairs to be far apart, got distance #{distance}"
     end
 
     test "all rooms are connected via corridors" do

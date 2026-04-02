@@ -222,7 +222,39 @@ defmodule Gameserver.Map do
 
     # connect rooms with L-shaped corridors via MST
     {map, _rand} = Corridor.connect_rooms(rooms, map, rand)
-    map
+
+    # place stairs: upstairs in first room, downstairs in farthest room
+    place_stairs(map, rooms)
+  end
+
+  @spec place_stairs(t(), [room()]) :: t()
+  defp place_stairs(_map, rooms) when length(rooms) < 2 do
+    raise ArgumentError, "need at least 2 rooms to place stairs, got #{length(rooms)}"
+  end
+
+  defp place_stairs(map, rooms) do
+    [first | rest] = rooms
+    first_center = room_center(first)
+
+    # find the room farthest from the first room
+    farthest =
+      Enum.max_by(rest, fn room ->
+        {cx, cy} = room_center(room)
+        {fx, fy} = first_center
+        (cx - fx) ** 2 + (cy - fy) ** 2
+      end)
+
+    # update tiles
+    {pos, w, h} = first
+    map = set_tile_in_room!(map, pos, w, h, :upstairs)
+
+    {pos, w, h} = farthest
+    set_tile_in_room!(map, pos, w, h, :downstairs)
+  end
+
+  @spec room_center(room()) :: coord()
+  defp room_center({{rx, ry}, rw, rh}) do
+    {rx + div(rw, 2), ry + div(rh, 2)}
   end
 
   @spec place_rooms(RoomConfig.t(), rand_state()) :: {[room()], rand_state()}
