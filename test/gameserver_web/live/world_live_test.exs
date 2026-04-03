@@ -10,13 +10,16 @@ defmodule GameserverWeb.WorldLiveTest do
   alias Gameserver.UUID
   alias Gameserver.WorldServer
 
-  # clear all entities between tests so mobs from MobServer or previous tests
-  # don't cause collision errors when spawning new entities
+  # clear all entities before and after each test so mobs from MobServer
+  # or previous tests don't interfere with assertions or cause collisions
   setup do
-    on_exit(fn ->
+    clear_all_entities = fn ->
       WorldServer.world_nodes()
       |> Enum.each(fn {id, _} -> WorldServer.leave(id) end)
-    end)
+    end
+
+    clear_all_entities.()
+    on_exit(clear_all_entities)
   end
 
   defp random_floor_pos(room_index \\ 0) do
@@ -247,6 +250,7 @@ defmodule GameserverWeb.WorldLiveTest do
       mob = Entity.new(name: "goblin", type: :mob, pos: random_floor_pos())
       {:ok, _pos} = WorldServer.join_entity(mob)
 
+      render(view)
       assert has_element?(view, "[data-entity=mob]")
     end
 
@@ -438,17 +442,27 @@ defmodule GameserverWeb.WorldLiveTest do
 
     test "clicking into a wall doesn't move", %{conn: conn} do
       {:ok, user} = User.new("walltapper")
-      {:ok, {px, py}} = WorldServer.join_user(user)
+      {:ok, _pos} = WorldServer.join_user(user)
       {:ok, view, _html} = live(conn, ~p"/world?user_id=#{user.id}")
 
-      # move north to get near the room edge, then click north into the wall
-      render_click(view, "tile-click", %{"x" => to_string(px), "y" => to_string(py - 1)})
-      Process.sleep(WorldServer.move_cooldown_ms() + 1)
-      render_click(view, "tile-click", %{"x" => to_string(px), "y" => to_string(py - 2)})
-      Process.sleep(WorldServer.move_cooldown_ms() + 1)
+      # walk north until hitting a wall
+      cooldown = WorldServer.move_cooldown_ms() + 1
 
-      # now at or near the wall, try clicking further north
+      assert :ok =
+               Enum.reduce_while(1..20, nil, fn _, _ ->
+                 case WorldServer.move(user.id, :north) do
+                   {:ok, _} ->
+                     Process.sleep(cooldown)
+                     {:cont, nil}
+
+                   {:error, _} ->
+                     {:halt, :ok}
+                 end
+               end)
+
+      # now adjacent to a wall — clicking north should not move
       {:ok, {cx, cy}} = WorldServer.get_position(user.id)
+      render(view)
       render_click(view, "tile-click", %{"x" => to_string(cx), "y" => to_string(cy - 1)})
 
       assert has_element?(view, "#player-position", "Position: {#{cx}, #{cy}}")
