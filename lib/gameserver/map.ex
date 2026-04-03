@@ -272,8 +272,9 @@ defmodule Gameserver.Map do
     end
   end
 
+  @doc "Returns the center coordinate of a room."
   @spec room_center(room()) :: coord()
-  defp room_center({{rx, ry}, rw, rh}) do
+  def room_center({{rx, ry}, rw, rh}) do
     {rx + div(rw, 2), ry + div(rh, 2)}
   end
 

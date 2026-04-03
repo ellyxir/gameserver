@@ -30,21 +30,16 @@ defmodule Gameserver.Map.Corridor do
 
     # carve an L-shaped corridor between each pair of connected rooms
     Enum.reduce(edges, {map, rand}, fn {room_a, room_b}, {map, rand} ->
-      center_a = room_center(room_a)
-      center_b = room_center(room_b)
+      center_a = GameMap.room_center(room_a)
+      center_b = GameMap.room_center(room_b)
       carve_corridor(map, center_a, center_b, rand)
     end)
   end
 
-  @spec room_center(GameMap.room()) :: GameMap.coord()
-  defp room_center({{rx, ry}, rw, rh}) do
-    {rx + div(rw, 2), ry + div(rh, 2)}
-  end
-
   @spec euclidean_distance(GameMap.room(), GameMap.room()) :: float()
   defp euclidean_distance(room_a, room_b) do
-    {x1, y1} = room_center(room_a)
-    {x2, y2} = room_center(room_b)
+    {x1, y1} = GameMap.room_center(room_a)
+    {x2, y2} = GameMap.room_center(room_b)
     :math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2)
   end
 

@@ -389,14 +389,15 @@ defmodule Gameserver.MapTest do
     test "all rooms are connected via corridors" do
       map = GameMap.generate(50, 50, seed: 42, room_count: 6)
 
-      floor_tiles =
+      # include stairs as walkable tiles for connectivity check
+      walkable =
         for x <- 0..(map.width - 1),
             y <- 0..(map.height - 1),
-            GameMap.get_tile!(map, {x, y}) == :floor,
+            GameMap.get_tile!(map, {x, y}) in [:floor, :upstairs, :downstairs],
             do: {x, y}
 
-      floor_set = MapSet.new(floor_tiles)
-      regions = count_regions(floor_set)
+      walkable_set = MapSet.new(walkable)
+      regions = count_regions(walkable_set)
 
       assert regions == 1, "expected all rooms connected, got #{regions} regions"
     end
