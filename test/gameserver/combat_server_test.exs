@@ -5,6 +5,7 @@ defmodule Gameserver.CombatServerTest do
   alias Gameserver.CombatServer
   alias Gameserver.Entity
   alias Gameserver.EntityServer
+  alias Gameserver.Map, as: GameMap
   alias Gameserver.User
   alias Gameserver.UUID
   alias Gameserver.WorldServer
@@ -14,7 +15,7 @@ defmodule Gameserver.CombatServerTest do
 
     world_server =
       start_supervised!(
-        {WorldServer, name: nil, entity_server: entity_server},
+        {WorldServer, name: nil, entity_server: entity_server, map: GameMap.sample_dungeon()},
         id: :world_server
       )
 
@@ -27,11 +28,27 @@ defmodule Gameserver.CombatServerTest do
     {:ok, entity_server: entity_server, world_server: world_server, combat_server: combat_server}
   end
 
+  # returns a floor tile adjacent to the spawn point
+  defp spawn_adjacent_pos(world_server) do
+    map = WorldServer.get_map(world_server)
+    {:ok, {sx, sy}} = GameMap.get_spawn_point(map)
+
+    [{sx + 1, sy}, {sx - 1, sy}, {sx, sy + 1}, {sx, sy - 1}]
+    |> Enum.find(fn pos -> !GameMap.collision?(map, pos) end)
+  end
+
+  # returns a floor tile NOT adjacent to the spawn point
+  defp non_spawn_adjacent_pos(world_server) do
+    map = WorldServer.get_map(world_server)
+    [_, room | _] = map.rooms
+    GameMap.random_tile_in_room(map, room)
+  end
+
   describe "attack/3" do
     test "adjacent attack applies damage and returns cooldown", ctx do
       {:ok, user} = User.new("alice")
       {:ok, _pos} = WorldServer.join_user(user, ctx.world_server)
-      mob = Entity.new(name: "goblin", type: :mob, pos: {2, 1})
+      mob = Entity.new(name: "goblin", type: :mob, pos: spawn_adjacent_pos(ctx.world_server))
       {:ok, _pos} = WorldServer.join_entity(mob, ctx.world_server)
 
       assert {:ok, {:attack, cooldown_ms}} =
@@ -45,7 +62,7 @@ defmodule Gameserver.CombatServerTest do
     end
 
     test "returns not_found when attacker does not exist", ctx do
-      mob = Entity.new(name: "goblin", type: :mob, pos: {2, 1})
+      mob = Entity.new(name: "goblin", type: :mob, pos: spawn_adjacent_pos(ctx.world_server))
       {:ok, _pos} = WorldServer.join_entity(mob, ctx.world_server)
       fake_id = UUID.generate()
 
@@ -62,9 +79,14 @@ defmodule Gameserver.CombatServerTest do
 
     test "diagonal adjacency counts as in range", ctx do
       {:ok, user} = User.new("alice")
-      {:ok, _pos} = WorldServer.join_user(user, ctx.world_server)
-      # user at {1,1}, mob at {2,2} — diagonally adjacent
-      mob = Entity.new(name: "goblin", type: :mob, pos: {2, 2})
+      {:ok, {sx, sy}} = WorldServer.join_user(user, ctx.world_server)
+      map = WorldServer.get_map(ctx.world_server)
+      # find a diagonal floor tile
+      diag_pos =
+        [{sx + 1, sy + 1}, {sx - 1, sy - 1}, {sx + 1, sy - 1}, {sx - 1, sy + 1}]
+        |> Enum.find(fn pos -> !GameMap.collision?(map, pos) end)
+
+      mob = Entity.new(name: "goblin", type: :mob, pos: diag_pos)
       {:ok, _pos} = WorldServer.join_entity(mob, ctx.world_server)
 
       assert {:ok, {:attack, _cooldown_ms}} =
@@ -75,7 +97,7 @@ defmodule Gameserver.CombatServerTest do
       Phoenix.PubSub.subscribe(Gameserver.PubSub, EntityServer.entity_topic())
       {:ok, user} = User.new("alice")
       {:ok, _pos} = WorldServer.join_user(user, ctx.world_server)
-      mob = Entity.new(name: "goblin", type: :mob, pos: {2, 1})
+      mob = Entity.new(name: "goblin", type: :mob, pos: spawn_adjacent_pos(ctx.world_server))
       {:ok, _pos} = WorldServer.join_entity(mob, ctx.world_server)
 
       # drain join broadcasts
@@ -92,8 +114,7 @@ defmodule Gameserver.CombatServerTest do
     test "returns out_of_range when entities are not adjacent", ctx do
       {:ok, user} = User.new("alice")
       {:ok, _pos} = WorldServer.join_user(user, ctx.world_server)
-      # user at {1,1}, mob at {3,2} — not adjacent
-      mob = Entity.new(name: "goblin", type: :mob, pos: {3, 2})
+      mob = Entity.new(name: "goblin", type: :mob, pos: non_spawn_adjacent_pos(ctx.world_server))
       {:ok, _pos} = WorldServer.join_entity(mob, ctx.world_server)
 
       assert {:error, :out_of_range} = CombatServer.attack(user.id, mob.id, ctx.combat_server)
@@ -102,7 +123,7 @@ defmodule Gameserver.CombatServerTest do
     test "returns target_dead when defender is already dead", ctx do
       {:ok, user} = User.new("alice")
       {:ok, _pos} = WorldServer.join_user(user, ctx.world_server)
-      mob = Entity.new(name: "goblin", type: :mob, pos: {2, 1})
+      mob = Entity.new(name: "goblin", type: :mob, pos: spawn_adjacent_pos(ctx.world_server))
       mob = %{mob | stats: %{mob.stats | dead: true}}
       {:ok, _pos} = WorldServer.join_entity(mob, ctx.world_server)
 
@@ -123,7 +144,7 @@ defmodule Gameserver.CombatServerTest do
       Phoenix.PubSub.subscribe(Gameserver.PubSub, CombatServer.combat_topic())
       {:ok, user} = User.new("alice")
       {:ok, _pos} = WorldServer.join_user(user, ctx.world_server)
-      mob = Entity.new(name: "goblin", type: :mob, pos: {2, 1})
+      mob = Entity.new(name: "goblin", type: :mob, pos: spawn_adjacent_pos(ctx.world_server))
       {:ok, _pos} = WorldServer.join_entity(mob, ctx.world_server)
 
       {:ok, _} = CombatServer.attack(user.id, mob.id, ctx.combat_server)
@@ -139,7 +160,7 @@ defmodule Gameserver.CombatServerTest do
 
     test "perform_attack modifies defender" do
       attacker = Entity.new(name: "alice", type: :user)
-      defender = Entity.new(name: "goblin", type: :mob, pos: {2, 1})
+      defender = Entity.new(name: "goblin", type: :mob, pos: {1, 1})
       update_fn = CombatServer.perform_attack(attacker, defender)
       updated_defender = update_fn.(defender)
       assert updated_defender.stats.hp < updated_defender.stats.max_hp
@@ -149,7 +170,7 @@ defmodule Gameserver.CombatServerTest do
       attacker = Entity.new(name: "alice", type: :user)
       attacker = %{attacker | stats: %{attacker.stats | attack_power: 5}}
 
-      defender = Entity.new(name: "goblin", type: :mob, pos: {2, 1})
+      defender = Entity.new(name: "goblin", type: :mob, pos: {1, 1})
       defender = %{defender | stats: %{defender.stats | hp: 1}}
       update_fn = CombatServer.perform_attack(attacker, defender)
       updated_defender = update_fn.(defender)
@@ -158,7 +179,7 @@ defmodule Gameserver.CombatServerTest do
 
     test "perform_attack doesnt allow zombies" do
       attacker = Entity.new(name: "alice", type: :user)
-      defender = Entity.new(name: "goblin", type: :mob, pos: {2, 1})
+      defender = Entity.new(name: "goblin", type: :mob, pos: {1, 1})
       defender = %{defender | stats: %{defender.stats | dead: true}}
       update_fn = CombatServer.perform_attack(attacker, defender)
       updated_defender = update_fn.(defender)
@@ -167,7 +188,7 @@ defmodule Gameserver.CombatServerTest do
 
     test "perform_attack sets dead" do
       attacker = Entity.new(name: "alice", type: :user)
-      defender = Entity.new(name: "goblin", type: :mob, pos: {2, 1})
+      defender = Entity.new(name: "goblin", type: :mob, pos: {1, 1})
       defender = %{defender | stats: %{defender.stats | hp: 1}}
       update_fn = CombatServer.perform_attack(attacker, defender)
       updated_defender = update_fn.(defender)

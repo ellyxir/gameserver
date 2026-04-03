@@ -8,12 +8,14 @@ defmodule Gameserver.WorldServerTest do
   alias Gameserver.UUID
   alias Gameserver.WorldServer
 
+  alias Gameserver.Map, as: GameMap
+
   setup do
     entity_server = start_supervised!({EntityServer, name: nil})
 
     pid =
       start_supervised!(
-        {WorldServer, name: nil, entity_server: entity_server},
+        {WorldServer, name: nil, entity_server: entity_server, map: GameMap.sample_dungeon()},
         id: :world_server
       )
 
@@ -193,17 +195,35 @@ defmodule Gameserver.WorldServerTest do
       {:ok, user} = User.new("alice")
       {:ok, _spawn} = WorldServer.join_user(user, server)
 
-      # spawn is on upstairs tile at {1,1} in sample_dungeon, move east to {2,1} which is floor
-      assert {:ok, {2, 1}} = WorldServer.move(user.id, :east, server)
-      assert {:ok, {2, 1}} = WorldServer.get_position(user.id, server)
+      # spawn is on the upstairs tile, move east
+      {:ok, {sx, sy}} = WorldServer.get_position(user.id, server)
+      assert {:ok, pos} = WorldServer.move(user.id, :east, server)
+      assert pos == {sx + 1, sy}
     end
 
     test "returns error when moving into a wall", %{server: server} do
-      {:ok, user} = User.new("alice")
-      {:ok, _spawn} = WorldServer.join_user(user, server)
+      game_map = WorldServer.get_map(server)
+      # place a mob on a floor tile next to a wall
+      wall_neighbor =
+        Enum.find_value(game_map.tiles, fn
+          {{x, y}, :floor} ->
+            cond do
+              GameMap.collision?(game_map, {x, y - 1}) -> {{x, y}, :north}
+              GameMap.collision?(game_map, {x, y + 1}) -> {{x, y}, :south}
+              GameMap.collision?(game_map, {x - 1, y}) -> {{x, y}, :west}
+              GameMap.collision?(game_map, {x + 1, y}) -> {{x, y}, :east}
+              true -> nil
+            end
 
-      # spawn is {1,1}, moving north hits wall at {1,0}
-      assert {:error, {:collision, {1, 0}, :wall}} = WorldServer.move(user.id, :north, server)
+          _ ->
+            nil
+        end)
+
+      {pos, direction} = wall_neighbor
+      mob = Entity.new(name: "walltest", type: :mob, pos: pos)
+      {:ok, _} = WorldServer.join_entity(mob, server)
+
+      assert {:error, {:collision, _, :wall}} = WorldServer.move(mob.id, direction, server)
     end
 
     test "returns error for unknown player", %{server: server} do
@@ -223,17 +243,34 @@ defmodule Gameserver.WorldServerTest do
       {:ok, user} = User.new("alice")
       {:ok, _spawn} = WorldServer.join_user(user, server)
 
+      # move east, wait for cooldown, move back west
       {:ok, _pos} = WorldServer.move(user.id, :east, server)
       Process.sleep(WorldServer.move_cooldown_ms() + 1)
-      assert {:ok, _pos} = WorldServer.move(user.id, :east, server)
+      assert {:ok, _pos} = WorldServer.move(user.id, :west, server)
     end
 
     test "position unchanged after collision", %{server: server} do
-      {:ok, user} = User.new("alice")
-      {:ok, spawn} = WorldServer.join_user(user, server)
+      game_map = WorldServer.get_map(server)
 
-      WorldServer.move(user.id, :north, server)
-      assert {:ok, ^spawn} = WorldServer.get_position(user.id, server)
+      # find a floor tile next to a wall
+      {pos, direction} =
+        Enum.find_value(game_map.tiles, fn
+          {{x, y}, :floor} ->
+            cond do
+              GameMap.collision?(game_map, {x, y - 1}) -> {{x, y}, :north}
+              GameMap.collision?(game_map, {x, y + 1}) -> {{x, y}, :south}
+              true -> nil
+            end
+
+          _ ->
+            nil
+        end)
+
+      mob = Entity.new(name: "wallmob", type: :mob, pos: pos)
+      {:ok, _} = WorldServer.join_entity(mob, server)
+
+      WorldServer.move(mob.id, direction, server)
+      assert {:ok, ^pos} = WorldServer.get_position(mob.id, server)
     end
   end
 
@@ -308,10 +345,26 @@ defmodule Gameserver.WorldServerTest do
 
     test "does not broadcast on collision", %{server: server} do
       Phoenix.PubSub.subscribe(Gameserver.PubSub, WorldServer.movement_topic())
-      {:ok, alice} = User.new("alice")
-      {:ok, _position} = WorldServer.join_user(alice, server)
+      game_map = WorldServer.get_map(server)
 
-      {:error, {:collision, _, _}} = WorldServer.move(alice.id, :north, server)
+      # find a floor tile next to a wall
+      {pos, direction} =
+        Enum.find_value(game_map.tiles, fn
+          {{x, y}, :floor} ->
+            cond do
+              GameMap.collision?(game_map, {x, y - 1}) -> {{x, y}, :north}
+              GameMap.collision?(game_map, {x, y + 1}) -> {{x, y}, :south}
+              true -> nil
+            end
+
+          _ ->
+            nil
+        end)
+
+      mob = Entity.new(name: "wallmob", type: :mob, pos: pos)
+      {:ok, _} = WorldServer.join_entity(mob, server)
+
+      {:error, {:collision, _, _}} = WorldServer.move(mob.id, direction, server)
 
       refute_receive {:entity_moved, _, _}
     end
@@ -401,19 +454,23 @@ defmodule Gameserver.WorldServerTest do
 
     test "mob can move", %{server: server} do
       mob = Entity.new(name: "goblin", type: :mob)
-      {:ok, _spawn} = WorldServer.join_entity(mob, server)
+      {:ok, {sx, sy}} = WorldServer.join_entity(mob, server)
 
-      # spawn is on upstairs tile at {1,1} in sample_dungeon, move east to {2,1}
-      assert {:ok, {2, 1}} = WorldServer.move(mob.id, :east, server)
+      # spawn is on the upstairs tile, move east
+      assert {:ok, pos} = WorldServer.move(mob.id, :east, server)
+      assert pos == {sx + 1, sy}
     end
   end
 
   describe "join_entity/2 with pre-set position" do
     test "mob with pre-set pos spawns at that pos", %{server: server} do
-      mob = Entity.new(name: "goblin", type: :mob, pos: {3, 2})
+      game_map = WorldServer.get_map(server)
+      [room | _] = game_map.rooms
+      pos = GameMap.random_tile_in_room(game_map, room)
+      mob = Entity.new(name: "goblin", type: :mob, pos: pos)
 
-      assert {:ok, {3, 2}} = WorldServer.join_entity(mob, server)
-      assert {:ok, {3, 2}} = WorldServer.get_position(mob.id, server)
+      assert {:ok, ^pos} = WorldServer.join_entity(mob, server)
+      assert {:ok, ^pos} = WorldServer.get_position(mob.id, server)
     end
 
     test "mob with pos on a wall is rejected", %{server: server} do
@@ -423,17 +480,22 @@ defmodule Gameserver.WorldServerTest do
     end
 
     test "mob rejected when tile is occupied by another entity", %{server: server} do
-      mob1 = Entity.new(name: "goblin", type: :mob, pos: {3, 2})
-      mob2 = Entity.new(name: "spider", type: :mob, pos: {3, 2})
+      game_map = WorldServer.get_map(server)
+      [room | _] = game_map.rooms
+      pos = GameMap.random_tile_in_room(game_map, room)
+      mob1 = Entity.new(name: "goblin", type: :mob, pos: pos)
+      mob2 = Entity.new(name: "spider", type: :mob, pos: pos)
 
       {:ok, _pos} = WorldServer.join_entity(mob1, server)
       assert {:error, :collision} = WorldServer.join_entity(mob2, server)
     end
 
     test "mob without pos gets spawn point", %{server: server} do
+      game_map = WorldServer.get_map(server)
+      {:ok, spawn_point} = GameMap.get_spawn_point(game_map)
       mob = Entity.new(name: "goblin", type: :mob)
 
-      assert {:ok, {1, 1}} = WorldServer.join_entity(mob, server)
+      assert {:ok, ^spawn_point} = WorldServer.join_entity(mob, server)
     end
 
     test "mob with out-of-bounds pos is rejected", %{server: server} do
@@ -451,73 +513,93 @@ defmodule Gameserver.WorldServerTest do
     end
 
     test "user with pre-set pos still gets spawn point", %{server: server} do
-      user_entity = Entity.new(name: "alice", type: :user, pos: {5, 10})
+      game_map = WorldServer.get_map(server)
+      {:ok, spawn_point} = GameMap.get_spawn_point(game_map)
+      # users always get spawn point regardless of pos
+      user_entity = Entity.new(name: "alice", type: :user, pos: {999, 999})
 
-      assert {:ok, {1, 1}} = WorldServer.join_entity(user_entity, server)
+      assert {:ok, ^spawn_point} = WorldServer.join_entity(user_entity, server)
     end
   end
 
   describe "entity-entity collision on movement" do
     test "player cannot walk onto a mob's tile", %{server: server} do
       {:ok, user} = User.new("alice")
-      {:ok, _spawn} = WorldServer.join_user(user, server)
-      # user at {1,1}, place mob at {2,1} (east of spawn)
-      mob = Entity.new(name: "goblin", type: :mob, pos: {2, 1})
+      {:ok, {sx, sy}} = WorldServer.join_user(user, server)
+      mob_pos = {sx + 1, sy}
+      mob = Entity.new(name: "goblin", type: :mob, pos: mob_pos)
       {:ok, _pos} = WorldServer.join_entity(mob, server)
       mob_id = mob.id
 
-      assert {:error, {:collision, {2, 1}, {:mob, ^mob_id}}} =
+      assert {:error, {:collision, ^mob_pos, {:mob, ^mob_id}}} =
                WorldServer.move(user.id, :east, server)
     end
 
     test "mob cannot walk onto a player's tile", %{server: server} do
       {:ok, user} = User.new("alice")
-      {:ok, _spawn} = WorldServer.join_user(user, server)
-      # mob at {2,1}, user at {1,1} — mob moves west into player
-      mob = Entity.new(name: "goblin", type: :mob, pos: {2, 1})
+      {:ok, {sx, sy} = spawn} = WorldServer.join_user(user, server)
+      mob_pos = {sx + 1, sy}
+      mob = Entity.new(name: "goblin", type: :mob, pos: mob_pos)
       {:ok, _pos} = WorldServer.join_entity(mob, server)
       user_id = user.id
 
-      assert {:error, {:collision, {1, 1}, {:user, ^user_id}}} =
+      assert {:error, {:collision, ^spawn, {:user, ^user_id}}} =
                WorldServer.move(mob.id, :west, server)
     end
 
     test "mob cannot walk onto another mob's tile", %{server: server} do
-      mob1 = Entity.new(name: "goblin", type: :mob, pos: {2, 1})
-      mob2 = Entity.new(name: "spider", type: :mob, pos: {3, 1})
+      game_map = WorldServer.get_map(server)
+
+      # find two adjacent floor tiles
+      {pos1, pos2, direction} =
+        Enum.find_value(game_map.tiles, fn
+          {{x, y}, :floor} ->
+            cond do
+              !GameMap.collision?(game_map, {x + 1, y}) -> {{x, y}, {x + 1, y}, :east}
+              !GameMap.collision?(game_map, {x, y + 1}) -> {{x, y}, {x, y + 1}, :south}
+              true -> nil
+            end
+
+          _ ->
+            nil
+        end)
+
+      mob1 = Entity.new(name: "goblin", type: :mob, pos: pos1)
+      mob2 = Entity.new(name: "spider", type: :mob, pos: pos2)
       {:ok, _pos} = WorldServer.join_entity(mob1, server)
       {:ok, _pos} = WorldServer.join_entity(mob2, server)
       mob2_id = mob2.id
 
-      assert {:error, {:collision, {3, 1}, {:mob, ^mob2_id}}} =
-               WorldServer.move(mob1.id, :east, server)
+      assert {:error, {:collision, ^pos2, {:mob, ^mob2_id}}} =
+               WorldServer.move(mob1.id, direction, server)
     end
 
     test "players can stack on each other", %{server: server} do
       {:ok, alice} = User.new("alice")
       {:ok, bob} = User.new("bob")
-      {:ok, _spawn} = WorldServer.join_user(alice, server)
+      {:ok, {sx, sy}} = WorldServer.join_user(alice, server)
       {:ok, _spawn} = WorldServer.join_user(bob, server)
 
-      # both at {1,1}, alice moves east
-      {:ok, {2, 1}} = WorldServer.move(alice.id, :east, server)
+      east = {sx + 1, sy}
+      {:ok, ^east} = WorldServer.move(alice.id, :east, server)
       Process.sleep(WorldServer.move_cooldown_ms() + 1)
       # bob follows alice — should succeed
-      assert {:ok, {2, 1}} = WorldServer.move(bob.id, :east, server)
+      assert {:ok, ^east} = WorldServer.move(bob.id, :east, server)
     end
 
     test "movement still works when destination is empty", %{server: server} do
       {:ok, user} = User.new("alice")
-      {:ok, _spawn} = WorldServer.join_user(user, server)
+      {:ok, {sx, sy}} = WorldServer.join_user(user, server)
 
-      assert {:ok, {2, 1}} = WorldServer.move(user.id, :east, server)
+      assert {:ok, {x, ^sy}} = WorldServer.move(user.id, :east, server)
+      assert x == sx + 1
     end
 
     test "entity collision does not broadcast movement", %{server: server} do
       Phoenix.PubSub.subscribe(Gameserver.PubSub, WorldServer.movement_topic())
       {:ok, user} = User.new("alice")
-      {:ok, _spawn} = WorldServer.join_user(user, server)
-      mob = Entity.new(name: "goblin", type: :mob, pos: {2, 1})
+      {:ok, {sx, sy}} = WorldServer.join_user(user, server)
+      mob = Entity.new(name: "goblin", type: :mob, pos: {sx + 1, sy})
       {:ok, _pos} = WorldServer.join_entity(mob, server)
 
       {:error, {:collision, _, _}} = WorldServer.move(user.id, :east, server)

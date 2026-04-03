@@ -12,7 +12,10 @@ defmodule Gameserver.MobServerTest do
 
     server =
       start_supervised!(
-        {WorldServer, name: :"world_#{System.unique_integer()}", entity_server: entity_server},
+        {WorldServer,
+         name: :"world_#{System.unique_integer()}",
+         entity_server: entity_server,
+         map: Gameserver.Map.sample_dungeon()},
         id: :world_server
       )
 
@@ -55,6 +58,28 @@ defmodule Gameserver.MobServerTest do
         assert {:ok, :floor} == GameMap.get_tile(map, node.pos),
                "expected #{node.name} at #{inspect(node.pos)} to be on a floor tile"
       end)
+    end
+
+    test "distributes mobs across different rooms", %{server: server} do
+      Phoenix.PubSub.subscribe(Gameserver.PubSub, WorldServer.presence_topic())
+      start_supervised!({MobServer, world_server: server})
+      wait_for_mobs(3)
+
+      map = WorldServer.get_map(server)
+      mobs = mob_nodes(server)
+
+      # check each mob is in a different room
+      rooms_used =
+        Enum.map(mobs, fn {_id, node} ->
+          {x, y} = node.pos
+
+          Enum.find(map.rooms, fn {{rx, ry}, rw, rh} ->
+            x >= rx and x < rx + rw and y >= ry and y < ry + rh
+          end)
+        end)
+
+      assert length(Enum.uniq(rooms_used)) == length(rooms_used),
+             "expected mobs in different rooms, got #{inspect(rooms_used)}"
     end
 
     test "mobs are visible to players who join after", %{server: server} do

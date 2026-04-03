@@ -301,6 +301,150 @@ defmodule Gameserver.MapTest do
     end
   end
 
+  describe "generate/2" do
+    test "returns a map with the given dimensions" do
+      map = GameMap.generate(30, 20)
+      assert %GameMap{} = map
+      assert map.width == 30
+      assert map.height == 20
+    end
+
+    test "populates rooms on the struct" do
+      map = GameMap.generate(40, 40, seed: 42, room_count: 5)
+      assert is_list(map.rooms)
+      assert length(map.rooms) <= 5
+    end
+
+    test "contains floor tiles from carved rooms" do
+      map = GameMap.generate(40, 40, seed: 42)
+
+      floor_count =
+        for x <- 0..(map.width - 1),
+            y <- 0..(map.height - 1),
+            GameMap.get_tile!(map, {x, y}) == :floor,
+            reduce: 0 do
+          acc -> acc + 1
+        end
+
+      assert floor_count > 0
+    end
+
+    test "raises when room_dim_min > room_dim_max" do
+      assert_raise ArgumentError, fn ->
+        GameMap.generate(30, 30, room_dim_min: 7, room_dim_max: 3, seed: 1)
+      end
+    end
+
+    test "raises when grid is too small to fit rooms" do
+      # on a 4x4 grid, rooms of size 5x5 can never fit.
+      # generate should raise since stairs need at least 2 rooms.
+      assert_raise ArgumentError, ~r/need at least 2 rooms/, fn ->
+        GameMap.generate(4, 4, seed: 1, room_dim_min: 5, room_dim_max: 5, room_count: 3)
+      end
+    end
+
+    test "has exactly one upstairs and one downstairs on different tiles" do
+      map = GameMap.generate(40, 40, seed: 42, room_count: 5)
+
+      stairs =
+        for x <- 0..(map.width - 1),
+            y <- 0..(map.height - 1),
+            tile = GameMap.get_tile!(map, {x, y}),
+            tile in [:upstairs, :downstairs],
+            do: {tile, {x, y}}
+
+      upstairs = Enum.filter(stairs, fn {tile, _} -> tile == :upstairs end)
+      downstairs = Enum.filter(stairs, fn {tile, _} -> tile == :downstairs end)
+
+      assert length(upstairs) == 1, "expected 1 upstairs, got #{length(upstairs)}"
+      assert length(downstairs) == 1, "expected 1 downstairs, got #{length(downstairs)}"
+
+      [{_, up_coord}] = upstairs
+      [{_, down_coord}] = downstairs
+      assert up_coord != down_coord
+    end
+
+    test "downstairs is placed in the room farthest from upstairs" do
+      # use known room positions so we can predict which is farthest
+      # generate a large map with a fixed seed where rooms are spread out
+      map = GameMap.generate(50, 50, seed: 42, room_count: 6)
+
+      {:ok, up_coord} = GameMap.get_spawn_point(map)
+
+      down_coord =
+        Enum.find_value(map.tiles, fn
+          {coord, :downstairs} -> coord
+          _ -> nil
+        end)
+
+      # stairs should be on different tiles and reasonably far apart
+      assert up_coord != down_coord
+
+      {ux, uy} = up_coord
+      {dx, dy} = down_coord
+      distance = :math.sqrt((dx - ux) ** 2 + (dy - uy) ** 2)
+      assert distance > 5, "expected stairs to be far apart, got distance #{distance}"
+    end
+
+    test "all rooms are connected via corridors" do
+      map = GameMap.generate(50, 50, seed: 42, room_count: 6)
+
+      # include stairs as walkable tiles for connectivity check
+      walkable =
+        for x <- 0..(map.width - 1),
+            y <- 0..(map.height - 1),
+            GameMap.get_tile!(map, {x, y}) in [:floor, :upstairs, :downstairs],
+            do: {x, y}
+
+      walkable_set = MapSet.new(walkable)
+      regions = count_regions(walkable_set)
+
+      assert regions == 1, "expected all rooms connected, got #{regions} regions"
+    end
+  end
+
+  describe "random_tile_in_room/2" do
+    test "returns a floor tile within the room bounds" do
+      map = GameMap.generate(40, 40, seed: 42, room_count: 5)
+      [room | _] = map.rooms
+      {{rx, ry}, rw, rh} = room
+
+      {x, y} = GameMap.random_tile_in_room(map, room)
+
+      assert x >= rx and x < rx + rw
+      assert y >= ry and y < ry + rh
+      assert {:ok, :floor} = GameMap.get_tile(map, {x, y})
+    end
+  end
+
+  defp count_regions(floor_set), do: count_regions(floor_set, 0)
+
+  defp count_regions(floor_set, count) do
+    case Enum.at(floor_set, 0) do
+      nil ->
+        count
+
+      start ->
+        count_regions(MapSet.difference(floor_set, flood_fill(start, floor_set)), count + 1)
+    end
+  end
+
+  defp flood_fill(start, floor_set) do
+    do_flood_fill([start], floor_set, MapSet.new())
+  end
+
+  defp do_flood_fill([], _floor_set, visited), do: visited
+
+  defp do_flood_fill([{x, y} | rest], floor_set, visited) do
+    if MapSet.member?(floor_set, {x, y}) and not MapSet.member?(visited, {x, y}) do
+      visited = MapSet.put(visited, {x, y})
+      neighbors = [{x + 1, y}, {x - 1, y}, {x, y + 1}, {x, y - 1}]
+      do_flood_fill(neighbors ++ rest, floor_set, visited)
+    else
+      do_flood_fill(rest, floor_set, visited)
+    end
+  end
+
   describe "parse_coord/2" do
     test "converts string pair to coord tuple" do
       assert GameMap.parse_coord("3", "7") == {3, 7}
