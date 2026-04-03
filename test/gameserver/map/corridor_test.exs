@@ -101,6 +101,45 @@ defmodule Gameserver.Map.CorridorTest do
     end
   end
 
+  describe "room_path_length/3" do
+    test "returns number of rooms on path between two connected rooms" do
+      #  A -- B -- C (linear MST)
+      a = {{0, 0}, 3, 3}
+      b = {{10, 0}, 3, 3}
+      c = {{20, 0}, 3, 3}
+      edges = [{a, b}, {b, c}]
+
+      assert Corridor.room_path_length(edges, a, b) == 2
+      assert Corridor.room_path_length(edges, a, c) == 3
+      assert Corridor.room_path_length(edges, c, a) == 3
+    end
+
+    test "returns 1 when from and to are the same room" do
+      a = {{0, 0}, 3, 3}
+      b = {{10, 0}, 3, 3}
+      edges = [{a, b}]
+
+      assert Corridor.room_path_length(edges, a, a) == 1
+    end
+
+    test "finds path in branching tree" do
+      #       B
+      #      /
+      # A - D
+      #      \
+      #       C
+      a = {{0, 0}, 3, 3}
+      b = {{10, 10}, 3, 3}
+      c = {{10, 20}, 3, 3}
+      d = {{10, 0}, 3, 3}
+      edges = [{a, d}, {d, b}, {d, c}]
+
+      assert Corridor.room_path_length(edges, a, b) == 3
+      assert Corridor.room_path_length(edges, b, c) == 3
+      assert Corridor.room_path_length(edges, a, d) == 2
+    end
+  end
+
   defp flood_fill(start, floor_set) do
     do_flood_fill([start], floor_set, MapSet.new())
   end
