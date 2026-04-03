@@ -247,12 +247,9 @@ defmodule Gameserver.Map do
         (cx - fx) ** 2 + (cy - fy) ** 2
       end)
 
-    # update tiles
-    {pos, w, h} = first
-    map = set_tile_in_room!(map, pos, w, h, :upstairs)
-
-    {pos, w, h} = farthest
-    set_tile_in_room!(map, pos, w, h, :downstairs)
+    # place stairs at room centers so they always have adjacent floor tiles
+    map = set_tile(map, room_center(first), :upstairs)
+    set_tile(map, room_center(farthest), :downstairs)
   end
 
   @doc """
@@ -351,43 +348,13 @@ defmodule Gameserver.Map do
   end
 
   @doc """
-  Creates a sample dungeon map with 3 rooms connected by corridors.
+  Creates a deterministic sample dungeon for tests.
 
-  The dungeon is approximately 15x15 tiles.
+  Uses `generate/3` with a fixed seed for reproducibility.
   """
   @spec sample_dungeon() :: t()
   def sample_dungeon do
-    width = 15
-    height = 15
-
-    rooms = [
-      {{1, 1}, 4, 4},
-      {{10, 1}, 4, 4},
-      {{5, 10}, 5, 4}
-    ]
-
-    map =
-      new(width, height)
-      # Room 1: top-left (4x4 at position 1,1)
-      |> fill_rect({1, 1}, 4, 4, :floor)
-      # Room 2: top-right (4x4 at position 10,1)
-      |> fill_rect({10, 1}, 4, 4, :floor)
-      # Room 3: bottom-center (5x4 at position 5,10)
-      |> fill_rect({5, 10}, 5, 4, :floor)
-      # Corridor from room 1 to room 2 (horizontal at y=2)
-      |> fill_rect({5, 2}, 5, 1, :floor)
-      # Corridor from room 1 down to room 3 (vertical at x=3)
-      |> fill_rect({3, 5}, 1, 5, :floor)
-      # Corridor from room 2 down to room 3 (vertical at x=11)
-      |> fill_rect({11, 5}, 1, 5, :floor)
-      # Connect vertical corridors to room 3 (horizontal at y=10)
-      |> fill_rect({3, 10}, 3, 1, :floor)
-      |> fill_rect({10, 10}, 2, 1, :floor)
-      # Place stairs after all geometry is carved
-      |> set_tile_in_room!({1, 1}, 4, 4, :upstairs)
-      |> set_tile_in_room!({5, 10}, 5, 4, :downstairs)
-
-    %{map | rooms: rooms}
+    generate(20, 20, seed: 0)
   end
 
   @doc """

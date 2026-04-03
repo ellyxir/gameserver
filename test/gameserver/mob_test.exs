@@ -9,6 +9,12 @@ defmodule Gameserver.MobTest do
   alias Gameserver.UUID
   alias Gameserver.WorldServer
 
+  defp floor_pos(server, room_index \\ 0) do
+    map = WorldServer.get_map(server)
+    room = Enum.at(map.rooms, rem(room_index, length(map.rooms)))
+    GameMap.random_tile_in_room(map, room)
+  end
+
   setup do
     entity_server = start_supervised!({EntityServer, name: nil}, id: :entity_server)
 
@@ -35,7 +41,7 @@ defmodule Gameserver.MobTest do
       mob = %Mob{
         id: mob_id,
         name: "goblin",
-        spawn_pos: {12, 3},
+        spawn_pos: floor_pos(ctx.world_server),
         world_server: ctx.world_server
       }
 
@@ -195,10 +201,21 @@ defmodule Gameserver.MobTest do
       send(pid, {:combat_event, event})
       _ = :sys.get_state(pid)
 
-      # walk player out of range (2 tiles south)
-      {:ok, _} = WorldServer.move(player_id, :south, ctx.world_server)
+      # walk player out of range by moving away from the mob
+      # find a direction with at least 2 open tiles
+      game_map = WorldServer.get_map(ctx.world_server)
+      {:ok, player_pos} = WorldServer.get_position(player_id, ctx.world_server)
+
+      direction =
+        Enum.find([:south, :north, :east, :west], fn dir ->
+          one = GameMap.interpolate(player_pos, dir)
+          two = GameMap.interpolate(one, dir)
+          !GameMap.collision?(game_map, one) and !GameMap.collision?(game_map, two)
+        end)
+
+      {:ok, _} = WorldServer.move(player_id, direction, ctx.world_server)
       Process.sleep(WorldServer.move_cooldown_ms() + 10)
-      {:ok, _} = WorldServer.move(player_id, :south, ctx.world_server)
+      {:ok, _} = WorldServer.move(player_id, direction, ctx.world_server)
 
       send(pid, :attack_target)
       state = :sys.get_state(pid)
@@ -211,11 +228,12 @@ defmodule Gameserver.MobTest do
   describe "init/1" do
     test "creates entity and joins the world", ctx do
       id = UUID.generate()
+      spawn_pos = floor_pos(ctx.world_server)
 
       mob = %Mob{
         id: id,
         name: "goblin",
-        spawn_pos: {12, 3},
+        spawn_pos: spawn_pos,
         world_server: ctx.world_server
       }
 
@@ -225,7 +243,7 @@ defmodule Gameserver.MobTest do
       _ = :sys.get_state(pid)
 
       {:ok, pos} = WorldServer.get_position(id, ctx.world_server)
-      assert pos == {12, 3}
+      assert pos == spawn_pos
     end
   end
 end

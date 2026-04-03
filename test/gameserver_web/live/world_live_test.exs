@@ -441,13 +441,17 @@ defmodule GameserverWeb.WorldLiveTest do
       {:ok, {px, py}} = WorldServer.join_user(user)
       {:ok, view, _html} = live(conn, ~p"/world?user_id=#{user.id}")
 
-      # click north of spawn {1,1} hits wall at {1,0}
-      render_click(view, "tile-click", %{
-        "x" => to_string(px),
-        "y" => to_string(py - 1)
-      })
+      # move north to get near the room edge, then click north into the wall
+      render_click(view, "tile-click", %{"x" => to_string(px), "y" => to_string(py - 1)})
+      Process.sleep(WorldServer.move_cooldown_ms() + 1)
+      render_click(view, "tile-click", %{"x" => to_string(px), "y" => to_string(py - 2)})
+      Process.sleep(WorldServer.move_cooldown_ms() + 1)
 
-      assert has_element?(view, "#player-position", "Position: {#{px}, #{py}}")
+      # now at or near the wall, try clicking further north
+      {:ok, {cx, cy}} = WorldServer.get_position(user.id)
+      render_click(view, "tile-click", %{"x" => to_string(cx), "y" => to_string(cy - 1)})
+
+      assert has_element?(view, "#player-position", "Position: {#{cx}, #{cy}}")
     end
   end
 end
