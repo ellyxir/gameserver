@@ -19,21 +19,25 @@ defmodule Gameserver.Map.Corridor do
   a corridor for each edge. Randomly chooses horizontal-first or
   vertical-first for each corridor.
 
-  Returns `{updated_map, rand_state}`.
+  Returns `{updated_map, rand_state, mst_edges}`.
   """
-  @spec connect_rooms([GameMap.room()], GameMap.t(), rand_state()) :: {GameMap.t(), rand_state()}
-  def connect_rooms([], map, rand), do: {map, rand}
-  def connect_rooms([_], map, rand), do: {map, rand}
+  @spec connect_rooms([GameMap.room()], GameMap.t(), rand_state()) ::
+          {GameMap.t(), rand_state(), [{GameMap.room(), GameMap.room()}]}
+  def connect_rooms([], map, rand), do: {map, rand, []}
+  def connect_rooms([_], map, rand), do: {map, rand, []}
 
   def connect_rooms(rooms, map, rand) do
     edges = Kruskal.mst(rooms, &euclidean_distance/2)
 
     # carve an L-shaped corridor between each pair of connected rooms
-    Enum.reduce(edges, {map, rand}, fn {room_a, room_b}, {map, rand} ->
-      center_a = GameMap.room_center(room_a)
-      center_b = GameMap.room_center(room_b)
-      carve_corridor(map, center_a, center_b, rand)
-    end)
+    {map, rand} =
+      Enum.reduce(edges, {map, rand}, fn {room_a, room_b}, {map, rand} ->
+        center_a = GameMap.room_center(room_a)
+        center_b = GameMap.room_center(room_b)
+        carve_corridor(map, center_a, center_b, rand)
+      end)
+
+    {map, rand, edges}
   end
 
   @spec euclidean_distance(GameMap.room(), GameMap.room()) :: float()

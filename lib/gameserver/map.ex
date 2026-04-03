@@ -222,7 +222,7 @@ defmodule Gameserver.Map do
       end)
 
     # connect rooms with L-shaped corridors via MST
-    {game_map, _rand} = Corridor.connect_rooms(rooms, game_map, rand)
+    {game_map, _rand, _edges} = Corridor.connect_rooms(rooms, game_map, rand)
 
     # place stairs: upstairs in first room, downstairs in farthest room
     game_map = place_stairs(game_map, rooms)
