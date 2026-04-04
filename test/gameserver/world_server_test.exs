@@ -69,6 +69,68 @@ defmodule Gameserver.WorldServerTest do
       assert first_map.tiles == second_map.tiles
       assert first_map.seed == second_map.seed
     end
+
+    test "rebuilds user entities from entityserver on restart" do
+      entity_server = start_supervised!({EntityServer, name: nil}, id: :es_rebuild_test)
+      state_ets_name = :"state_ets_#{System.unique_integer([:positive])}"
+      state_ets = start_supervised!({StateETS, name: state_ets_name}, id: :state_ets_rebuild_test)
+
+      # first boot
+      world =
+        start_supervised!(
+          {WorldServer, name: nil, entity_server: entity_server, state_ets: state_ets},
+          id: :ws_rebuild_test
+        )
+
+      # join a user
+      {:ok, user} = User.new("alice")
+      {:ok, pos} = WorldServer.join_user(user, world)
+
+      # stop worldserver (entityserver stays alive)
+      stop_supervised!(:ws_rebuild_test)
+
+      # second boot — should rebuild from entityserver
+      world2 =
+        start_supervised!(
+          {WorldServer, name: nil, entity_server: entity_server, state_ets: state_ets},
+          id: :ws_rebuild_test_2
+        )
+
+      # user should be in the world at the same position
+      assert {:ok, ^pos} = WorldServer.get_position(user.id, world2)
+      assert [{_, "alice"}] = WorldServer.who(world2)
+    end
+
+    test "does not rebuild mob entities on restart" do
+      entity_server = start_supervised!({EntityServer, name: nil}, id: :es_mob_rebuild_test)
+      state_ets_name = :"state_ets_#{System.unique_integer([:positive])}"
+
+      state_ets =
+        start_supervised!({StateETS, name: state_ets_name}, id: :state_ets_mob_rebuild_test)
+
+      # first boot
+      world =
+        start_supervised!(
+          {WorldServer, name: nil, entity_server: entity_server, state_ets: state_ets},
+          id: :ws_mob_rebuild_test
+        )
+
+      # join a mob
+      mob = Entity.new(name: "goblin", type: :mob)
+      {:ok, _pos} = WorldServer.join_entity(mob, world)
+
+      # stop worldserver
+      stop_supervised!(:ws_mob_rebuild_test)
+
+      # second boot — mob should not be rebuilt
+      world2 =
+        start_supervised!(
+          {WorldServer, name: nil, entity_server: entity_server, state_ets: state_ets},
+          id: :ws_mob_rebuild_test_2
+        )
+
+      assert {:error, :not_found} = WorldServer.get_position(mob.id, world2)
+    end
   end
 
   describe "join_user/2" do

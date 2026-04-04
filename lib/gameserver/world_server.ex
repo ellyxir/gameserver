@@ -197,7 +197,14 @@ defmodule Gameserver.WorldServer do
     # save it ets
     StateETS.save_seed(seed, state_ets)
 
-    {:ok, %__MODULE__{map: map, entity_server: entity_server}}
+    # rebuild user entities from entityserver (survives worldserver crash)
+    entities =
+      entity_server
+      |> EntityServer.list_entities()
+      |> Enum.filter(fn e -> e.type == :user end)
+      |> Map.new(fn e -> {e.id, world_node(e)} end)
+
+    {:ok, %__MODULE__{map: map, entity_server: entity_server, entities: entities}}
   end
 
   @impl GenServer
