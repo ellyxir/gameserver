@@ -1,11 +1,11 @@
 defmodule Gameserver.WorldServer.StateETS do
   @moduledoc """
-  process to store world server seed in ETS
-  this is used to reconstruct the map should the world server crash
+  Holds the WorldServer map seed in an ETS table that survives WorldServer
+  crashes under rest_for_one supervision.
   """
   use GenServer
 
-  @ets_table :world_state
+  @ets_table :seed_table
   @ets_key :seed
 
   defstruct [:ets_table_ref]
@@ -23,7 +23,7 @@ defmodule Gameserver.WorldServer.StateETS do
 
   @doc "Persists the map generation seed."
   @spec save_seed(integer(), GenServer.server()) :: :ok
-  def save_seed(seed, server \\ __MODULE__) do
+  def save_seed(seed, server \\ __MODULE__) when is_integer(seed) do
     GenServer.call(server, {:save_seed, seed})
   end
 
@@ -40,9 +40,9 @@ defmodule Gameserver.WorldServer.StateETS do
   end
 
   @impl GenServer
+  @spec handle_continue(:setup, t()) :: {:noreply, t()}
   def handle_continue(:setup, state) do
-    # set up ETS
-    tid = :ets.new(@ets_table, [:public, :set])
+    tid = :ets.new(@ets_table, [:private, :set])
     {:noreply, %{state | ets_table_ref: tid}}
   end
 

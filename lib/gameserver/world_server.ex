@@ -27,11 +27,11 @@ defmodule Gameserver.WorldServer do
           name: String.t()
         }
 
-  @type t() :: %__MODULE__{
-          entities: %{UUID.t() => world_node()},
-          map: GameMap.t(),
-          entity_server: GenServer.server()
-        }
+  @typep t() :: %__MODULE__{
+           entities: %{UUID.t() => world_node()},
+           map: GameMap.t(),
+           entity_server: GenServer.server()
+         }
 
   @typedoc "what blocked a move — wall, mob, or user at the destination"
   @type obstacle() :: :wall | {:mob, UUID.t()} | {:user, UUID.t()}
@@ -194,7 +194,7 @@ defmodule Gameserver.WorldServer do
     # grab the new seed in case it was changed
     %GameMap{seed: seed} = map
 
-    # save it ets
+    # save seed to ets
     StateETS.save_seed(seed, state_ets)
 
     # rebuild user entities, remove orphaned mobs from entityserver
