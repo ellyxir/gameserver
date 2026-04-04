@@ -25,13 +25,19 @@ defmodule Gameserver.User do
 
   @type user_error() :: :too_long | :too_short | :required | :invalid_format
 
+  @typedoc false
+  @typep option() :: {:id, UUID.t()} | {:username, username()}
+
+  @typedoc false
+  @typep options() :: [option()]
+
   @doc """
   Creates a new user.
 
   Accepts a username string (validates and generates a UUID) or a keyword list
   of fields for direct construction.
   """
-  @spec new(username() | keyword()) :: {:ok, t()} | {:error, user_error()}
+  @spec new(username() | options()) :: {:ok, t()} | {:error, user_error()}
   def new(opts) when is_list(opts) do
     {:ok, struct!(__MODULE__, opts)}
   end

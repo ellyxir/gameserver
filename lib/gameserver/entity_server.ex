@@ -35,7 +35,10 @@ defmodule Gameserver.EntityServer do
     {:ok, %{}}
   end
 
-  @spec start_link(keyword()) :: GenServer.on_start()
+  @typedoc false
+  @typep option() :: {:name, GenServer.name() | nil}
+
+  @spec start_link([option()]) :: GenServer.on_start()
   def start_link(opts \\ []) do
     name = Keyword.get(opts, :name, __MODULE__)
     GenServer.start_link(__MODULE__, opts, name: name)
