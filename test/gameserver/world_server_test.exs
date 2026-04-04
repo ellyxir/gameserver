@@ -130,6 +130,7 @@ defmodule Gameserver.WorldServerTest do
         )
 
       assert {:error, :not_found} = WorldServer.get_position(mob.id, world2)
+      assert {:error, :not_found} = EntityServer.get_entity(mob.id, entity_server)
     end
   end
 

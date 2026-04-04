@@ -197,12 +197,20 @@ defmodule Gameserver.WorldServer do
     # save it ets
     StateETS.save_seed(seed, state_ets)
 
-    # rebuild user entities from entityserver (survives worldserver crash)
+    # rebuild user entities, remove orphaned mobs from entityserver
     entities =
       entity_server
       |> EntityServer.list_entities()
-      |> Enum.filter(fn e -> e.type == :user end)
-      |> Map.new(fn e -> {e.id, world_node(e)} end)
+      |> Enum.reduce(%{}, fn entity, acc ->
+        case entity.type do
+          :user ->
+            Map.put(acc, entity.id, world_node(entity))
+
+          :mob ->
+            EntityServer.remove_entity(entity.id, entity_server)
+            acc
+        end
+      end)
 
     {:ok, %__MODULE__{map: map, entity_server: entity_server, entities: entities}}
   end
