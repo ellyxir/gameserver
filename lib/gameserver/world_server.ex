@@ -14,6 +14,7 @@ defmodule Gameserver.WorldServer do
   alias Gameserver.Map, as: GameMap
   alias Gameserver.User
   alias Gameserver.UUID
+  alias Gameserver.WorldServer.StateETS
 
   defstruct entities: %{},
             map: %GameMap{width: 0, height: 0, tiles: %{}},
@@ -177,8 +178,41 @@ defmodule Gameserver.WorldServer do
   @impl GenServer
   def init(opts) do
     entity_server = Keyword.get(opts, :entity_server, EntityServer)
-    map = Keyword.get(opts, :map, GameMap.generate(@default_map_width, @default_map_height))
-    {:ok, %__MODULE__{map: map, entity_server: entity_server}}
+    state_ets = Keyword.get(opts, :state_ets, StateETS)
+
+    # get seed from stateets in case we crashed
+    seed = StateETS.get_seed(state_ets)
+
+    # generate the map
+    map =
+      Keyword.get(
+        opts,
+        :map,
+        GameMap.generate(@default_map_width, @default_map_height, seed: seed)
+      )
+
+    # grab the new seed in case it was changed
+    %GameMap{seed: seed} = map
+
+    # save seed to ets
+    StateETS.save_seed(seed, state_ets)
+
+    # rebuild user entities, remove orphaned mobs from entityserver
+    entities =
+      entity_server
+      |> EntityServer.list_entities()
+      |> Enum.reduce(%{}, fn entity, acc ->
+        case entity.type do
+          :user ->
+            Map.put(acc, entity.id, world_node(entity))
+
+          :mob ->
+            EntityServer.remove_entity(entity.id, entity_server)
+            acc
+        end
+      end)
+
+    {:ok, %__MODULE__{map: map, entity_server: entity_server, entities: entities}}
   end
 
   @impl GenServer

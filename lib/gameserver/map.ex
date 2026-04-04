@@ -8,7 +8,7 @@ defmodule Gameserver.Map do
 
   alias Gameserver.Map.Corridor
 
-  defstruct [:width, :height, :tiles, rooms: [], edges: []]
+  defstruct [:width, :height, :tiles, :seed, rooms: [], edges: []]
 
   @typedoc "An {x, y} coordinate pair"
   @type coord() :: {integer(), integer()}
@@ -43,6 +43,7 @@ defmodule Gameserver.Map do
           width: width(),
           height: height(),
           tiles: %{coord() => tile()},
+          seed: integer() | nil,
           rooms: [room()],
           edges: [{room(), room()}]
         }
@@ -160,6 +161,7 @@ defmodule Gameserver.Map do
     @enforce_keys [:width, :height]
     defstruct width: nil,
               height: nil,
+              seed: nil,
               room_count: 8,
               room_dim_min: 3,
               room_dim_max: 7,
@@ -171,6 +173,7 @@ defmodule Gameserver.Map do
     @type t() :: %__MODULE__{
             width: width(),
             height: height(),
+            seed: integer() | nil,
             room_count: non_neg_integer(),
             room_dim_min: pos_integer(),
             room_dim_max: pos_integer(),
@@ -202,16 +205,13 @@ defmodule Gameserver.Map do
 
   @spec generate(width(), height(), keyword()) :: t()
   def generate(width, height, opts \\ []) do
-    seed = Keyword.get(opts, :seed)
+    seed = Keyword.get(opts, :seed) || :erlang.unique_integer([:positive])
     min_path_rooms = Keyword.get(opts, :min_path_rooms, 1)
-
-    rand =
-      if seed,
-        do: :rand.seed_s(:exsss, seed),
-        else: :rand.seed_s(:exsss)
-
+    rand = :rand.seed_s(:exsss, seed)
     room_opts = Keyword.drop(opts, [:seed, :min_path_rooms])
-    config = struct!(RoomConfig, Keyword.merge([width: width, height: height], room_opts))
+
+    config =
+      struct!(RoomConfig, Keyword.merge([width: width, height: height, seed: seed], room_opts))
 
     if config.room_dim_min > config.room_dim_max do
       raise ArgumentError,
@@ -250,7 +250,7 @@ defmodule Gameserver.Map do
     if path_length >= min_path_rooms or retries == 0 do
       # place stairs: upstairs in first room, downstairs in farthest room
       game_map = place_stairs(game_map, stair_pair)
-      %{game_map | rooms: rooms, edges: edges}
+      %{game_map | rooms: rooms, edges: edges, seed: config.seed}
     else
       do_generate(config, rand, min_path_rooms, retries - 1)
     end
