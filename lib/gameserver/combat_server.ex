@@ -28,7 +28,13 @@ defmodule Gameserver.CombatServer do
   @doc """
   Starts the combat server. Accepts `:name`, `:entity_server`, and `:world_server` options.
   """
-  @spec start_link(keyword()) :: GenServer.on_start()
+  @typedoc false
+  @typep option() ::
+           {:name, GenServer.name() | nil}
+           | {:entity_server, GenServer.server()}
+           | {:world_server, GenServer.server()}
+
+  @spec start_link([option()]) :: GenServer.on_start()
   def start_link(opts \\ []) do
     name = Keyword.get(opts, :name, __MODULE__)
     GenServer.start_link(__MODULE__, opts, name: name)

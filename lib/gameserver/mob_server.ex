@@ -11,8 +11,15 @@ defmodule Gameserver.MobServer do
 
   @mob_names ["goblin", "spider", "rat"]
 
+  @typedoc false
+  @typep option() ::
+           {:world_server, GenServer.server()}
+           | {:name, Supervisor.name() | nil}
+           | {:strategy, DynamicSupervisor.strategy()}
+           | {:max_children, non_neg_integer() | :infinity}
+
   @doc "Starts the MobServer. Accepts `:world_server` option, defaults to WorldServer."
-  @spec start_link(keyword()) :: Supervisor.on_start()
+  @spec start_link([option()]) :: Supervisor.on_start()
   def start_link(opts \\ []) do
     {world_server, sup_opts} = Keyword.pop(opts, :world_server, WorldServer)
     DynamicSupervisor.start_link(__MODULE__, world_server, sup_opts)

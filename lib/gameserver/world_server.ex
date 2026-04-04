@@ -46,9 +46,16 @@ defmodule Gameserver.WorldServer do
   # Client API
 
   @doc """
-  Starts the WorldServer. Accepts `:name` and `:entity_server` options.
+  Starts the WorldServer. Accepts `:name`, `:entity_server`, `:state_ets`, and `:map` options.
   """
-  @spec start_link(keyword()) :: GenServer.on_start()
+  @typedoc false
+  @typep option() ::
+           {:name, GenServer.name() | nil}
+           | {:entity_server, GenServer.server()}
+           | {:state_ets, GenServer.server()}
+           | {:map, GameMap.t()}
+
+  @spec start_link([option()]) :: GenServer.on_start()
   def start_link(opts \\ []) do
     name = Keyword.get(opts, :name, __MODULE__)
     GenServer.start_link(__MODULE__, opts, name: name)
