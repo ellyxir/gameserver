@@ -26,13 +26,25 @@ defmodule Gameserver.Entity do
           cooldowns: Cooldowns.t()
         }
 
+  @typedoc false
+  @typep option() ::
+           {:id, UUID.t()}
+           | {:type, entity_type()}
+           | {:name, String.t()}
+           | {:pos, GameMap.coord()}
+           | {:stats, Stats.t()}
+           | {:cooldowns, Cooldowns.t()}
+
+  @typedoc false
+  @typep options() :: [option()]
+
   @doc """
   Creates a new entity.
 
   Accepts a keyword list with `:name` and `:type` (generates UUID if `:id` not provided),
   or a `Gameserver.Mob` struct.
   """
-  @spec new(Gameserver.Mob.t() | keyword()) :: t()
+  @spec new(Gameserver.Mob.t() | options()) :: t()
   def new(%Gameserver.Mob{} = mob) do
     new(id: mob.id, name: mob.name, type: :mob, pos: mob.spawn_pos)
   end
