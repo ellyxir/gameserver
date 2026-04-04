@@ -48,6 +48,9 @@ defmodule Gameserver.Map do
           edges: [{room(), room()}]
         }
 
+  @typedoc false
+  @typep new_option() :: {:default, tile()}
+
   @doc """
   Creates a new map with the given dimensions.
 
@@ -56,7 +59,7 @@ defmodule Gameserver.Map do
   Options:
     - `:default` - the tile type to fill the map with (default: `:wall`)
   """
-  @spec new(width(), height(), keyword()) :: t()
+  @spec new(width(), height(), [new_option()]) :: t()
   def new(width, height, opts \\ []) when width > 0 and height > 0 do
     default_tile = Keyword.get(opts, :default, :wall)
 
@@ -201,9 +204,18 @@ defmodule Gameserver.Map do
 
   Raises `ArgumentError` if `:room_dim_min` is greater than `:room_dim_max`.
   """
+  @typedoc false
+  @typep generate_option() ::
+           {:seed, integer()}
+           | {:min_path_rooms, pos_integer()}
+           | {:room_count, non_neg_integer()}
+           | {:room_dim_min, pos_integer()}
+           | {:room_dim_max, pos_integer()}
+           | {:max_attempts, non_neg_integer()}
+
   @max_layout_retries 10
 
-  @spec generate(width(), height(), keyword()) :: t()
+  @spec generate(width(), height(), [generate_option()]) :: t()
   def generate(width, height, opts \\ []) do
     seed = Keyword.get(opts, :seed) || :erlang.unique_integer([:positive])
     min_path_rooms = Keyword.get(opts, :min_path_rooms, 1)
