@@ -132,6 +132,63 @@ defmodule Gameserver.WorldServerTest do
       assert {:error, :not_found} = WorldServer.get_position(mob.id, world2)
       assert {:error, :not_found} = EntityServer.get_entity(mob.id, entity_server)
     end
+
+    test "mobs respawn after worldserver restart" do
+      entity_server = start_supervised!({EntityServer, name: nil}, id: :es_mob_respawn_test)
+      state_ets_name = :"state_ets_#{System.unique_integer([:positive])}"
+
+      state_ets =
+        start_supervised!({StateETS, name: state_ets_name}, id: :state_ets_mob_respawn_test)
+
+      # first boot
+      world =
+        start_supervised!(
+          {WorldServer, name: nil, entity_server: entity_server, state_ets: state_ets},
+          id: :ws_mob_respawn_test
+        )
+
+      # start mobserver, wait for mobs to join
+      _mob_server =
+        start_supervised!(
+          {Gameserver.MobServer, world_server: world, name: nil},
+          id: :ms_mob_respawn_test
+        )
+
+      Process.sleep(100)
+
+      # verify mobs exist
+      old_nodes = WorldServer.world_nodes(world)
+      old_mob_count = Enum.count(old_nodes, fn {_id, n} -> n.type == :mob end)
+      assert old_mob_count == 3
+
+      # stop mobserver then worldserver
+      stop_supervised!(:ms_mob_respawn_test)
+      stop_supervised!(:ws_mob_respawn_test)
+
+      # second boot
+      world2 =
+        start_supervised!(
+          {WorldServer, name: nil, entity_server: entity_server, state_ets: state_ets},
+          id: :ws_mob_respawn_test_2
+        )
+
+      _mob_server2 =
+        start_supervised!(
+          {Gameserver.MobServer, world_server: world2, name: nil},
+          id: :ms_mob_respawn_test_2
+        )
+
+      Process.sleep(100)
+
+      # verify fresh mobs exist with new ids
+      new_nodes = WorldServer.world_nodes(world2)
+      new_mob_count = Enum.count(new_nodes, fn {_id, n} -> n.type == :mob end)
+      assert new_mob_count == 3
+
+      old_mob_ids = for {id, n} <- old_nodes, n.type == :mob, do: id
+      new_mob_ids = for {id, n} <- new_nodes, n.type == :mob, do: id
+      assert MapSet.disjoint?(MapSet.new(old_mob_ids), MapSet.new(new_mob_ids))
+    end
   end
 
   describe "join_user/2" do
