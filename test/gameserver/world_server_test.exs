@@ -23,154 +23,104 @@ defmodule Gameserver.WorldServerTest do
     {:ok, server: pid, entity_server: entity_server}
   end
 
+  defp start_world_trio(id_suffix) do
+    entity_server = start_supervised!({EntityServer, name: nil}, id: :"es_#{id_suffix}")
+    state_ets_name = :"state_ets_#{System.unique_integer([:positive])}"
+    state_ets = start_supervised!({StateETS, name: state_ets_name}, id: :"ets_#{id_suffix}")
+
+    world =
+      start_supervised!(
+        {WorldServer, name: nil, entity_server: entity_server, state_ets: state_ets},
+        id: :"ws_#{id_suffix}"
+      )
+
+    %{world: world, entity_server: entity_server, state_ets: state_ets}
+  end
+
+  defp restart_world(%{entity_server: entity_server, state_ets: state_ets}, old_id, new_id) do
+    stop_supervised!(old_id)
+
+    world =
+      start_supervised!(
+        {WorldServer, name: nil, entity_server: entity_server, state_ets: state_ets},
+        id: new_id
+      )
+
+    %{world: world, entity_server: entity_server, state_ets: state_ets}
+  end
+
+  defp await_mob_joins(count) do
+    for _ <- 1..count do
+      assert_receive {:entity_joined, %Entity{type: :mob} = entity}, 1000
+      entity
+    end
+  end
+
   describe "genserver lifecycle" do
     test "is started and registered by application" do
       assert Process.whereis(WorldServer) != nil
     end
 
     test "stores map seed in state_ets on init" do
-      entity_server = start_supervised!({EntityServer, name: nil}, id: :es_seed_test)
-      state_ets_name = :"state_ets_#{System.unique_integer([:positive])}"
-      state_ets = start_supervised!({StateETS, name: state_ets_name}, id: :state_ets_seed_test)
-
-      _world =
-        start_supervised!(
-          {WorldServer, name: nil, entity_server: entity_server, state_ets: state_ets},
-          id: :ws_seed_test
-        )
+      %{world: world, state_ets: state_ets} = start_world_trio(:seed_test)
 
       seed = StateETS.get_seed(state_ets)
       assert is_integer(seed)
+      assert seed == WorldServer.get_map(world).seed
     end
 
     test "restart produces the same map from persisted seed" do
-      entity_server = start_supervised!({EntityServer, name: nil}, id: :es_restart_test)
-      state_ets_name = :"state_ets_#{System.unique_integer([:positive])}"
-      state_ets = start_supervised!({StateETS, name: state_ets_name}, id: :state_ets_restart_test)
-
-      # first boot — generates a map and stores seed
-      world =
-        start_supervised!(
-          {WorldServer, name: nil, entity_server: entity_server, state_ets: state_ets},
-          id: :ws_restart_test
-        )
-
+      %{world: world} = trio = start_world_trio(:restart_test)
       first_map = WorldServer.get_map(world)
-      stop_supervised!(:ws_restart_test)
 
-      # second boot — should regenerate the same map from persisted seed
-      world2 =
-        start_supervised!(
-          {WorldServer, name: nil, entity_server: entity_server, state_ets: state_ets},
-          id: :ws_restart_test_2
-        )
-
+      %{world: world2} = restart_world(trio, :ws_restart_test, :ws_restart_test_2)
       second_map = WorldServer.get_map(world2)
+
       assert first_map.tiles == second_map.tiles
       assert first_map.seed == second_map.seed
     end
 
     test "rebuilds user entities from entityserver on restart" do
-      entity_server = start_supervised!({EntityServer, name: nil}, id: :es_rebuild_test)
-      state_ets_name = :"state_ets_#{System.unique_integer([:positive])}"
-      state_ets = start_supervised!({StateETS, name: state_ets_name}, id: :state_ets_rebuild_test)
+      %{world: world} = trio = start_world_trio(:rebuild_test)
 
-      # first boot
-      world =
-        start_supervised!(
-          {WorldServer, name: nil, entity_server: entity_server, state_ets: state_ets},
-          id: :ws_rebuild_test
-        )
-
-      # join a user
       {:ok, user} = User.new("alice")
       {:ok, pos} = WorldServer.join_user(user, world)
 
-      # stop worldserver (entityserver stays alive)
-      stop_supervised!(:ws_rebuild_test)
+      %{world: world2} = restart_world(trio, :ws_rebuild_test, :ws_rebuild_test_2)
 
-      # second boot — should rebuild from entityserver
-      world2 =
-        start_supervised!(
-          {WorldServer, name: nil, entity_server: entity_server, state_ets: state_ets},
-          id: :ws_rebuild_test_2
-        )
-
-      # user should be in the world at the same position
       assert {:ok, ^pos} = WorldServer.get_position(user.id, world2)
       assert [{_, "alice"}] = WorldServer.who(world2)
     end
 
     test "does not rebuild mob entities on restart" do
-      entity_server = start_supervised!({EntityServer, name: nil}, id: :es_mob_rebuild_test)
-      state_ets_name = :"state_ets_#{System.unique_integer([:positive])}"
+      %{world: world, entity_server: entity_server} = trio = start_world_trio(:mob_rebuild_test)
 
-      state_ets =
-        start_supervised!({StateETS, name: state_ets_name}, id: :state_ets_mob_rebuild_test)
-
-      # first boot
-      world =
-        start_supervised!(
-          {WorldServer, name: nil, entity_server: entity_server, state_ets: state_ets},
-          id: :ws_mob_rebuild_test
-        )
-
-      # join a mob
       mob = Entity.new(name: "goblin", type: :mob)
       {:ok, _pos} = WorldServer.join_entity(mob, world)
 
-      # stop worldserver
-      stop_supervised!(:ws_mob_rebuild_test)
-
-      # second boot — mob should not be rebuilt
-      world2 =
-        start_supervised!(
-          {WorldServer, name: nil, entity_server: entity_server, state_ets: state_ets},
-          id: :ws_mob_rebuild_test_2
-        )
+      %{world: world2} = restart_world(trio, :ws_mob_rebuild_test, :ws_mob_rebuild_test_2)
 
       assert {:error, :not_found} = WorldServer.get_position(mob.id, world2)
       assert {:error, :not_found} = EntityServer.get_entity(mob.id, entity_server)
     end
 
     test "mobs respawn after worldserver restart" do
-      entity_server = start_supervised!({EntityServer, name: nil}, id: :es_mob_respawn_test)
-      state_ets_name = :"state_ets_#{System.unique_integer([:positive])}"
+      %{world: world} = trio = start_world_trio(:mob_respawn_test)
 
-      state_ets =
-        start_supervised!({StateETS, name: state_ets_name}, id: :state_ets_mob_respawn_test)
+      Phoenix.PubSub.subscribe(Gameserver.PubSub, WorldServer.presence_topic())
 
-      # first boot
-      world =
-        start_supervised!(
-          {WorldServer, name: nil, entity_server: entity_server, state_ets: state_ets},
-          id: :ws_mob_respawn_test
-        )
-
-      # start mobserver, wait for mobs to join
       _mob_server =
         start_supervised!(
           {Gameserver.MobServer, world_server: world, name: nil},
           id: :ms_mob_respawn_test
         )
 
-      Process.sleep(100)
+      old_mobs = await_mob_joins(3)
+      old_mob_ids = MapSet.new(old_mobs, & &1.id)
 
-      # verify mobs exist
-      old_nodes = WorldServer.world_nodes(world)
-      old_mob_count = Enum.count(old_nodes, fn {_id, n} -> n.type == :mob end)
-      assert old_mob_count == 3
-
-      # stop mobserver then worldserver
       stop_supervised!(:ms_mob_respawn_test)
-      stop_supervised!(:ws_mob_respawn_test)
 
-      # second boot
-      world2 =
-        start_supervised!(
-          {WorldServer, name: nil, entity_server: entity_server, state_ets: state_ets},
-          id: :ws_mob_respawn_test_2
-        )
+      %{world: world2} = restart_world(trio, :ws_mob_respawn_test, :ws_mob_respawn_test_2)
 
       _mob_server2 =
         start_supervised!(
@@ -178,16 +128,11 @@ defmodule Gameserver.WorldServerTest do
           id: :ms_mob_respawn_test_2
         )
 
-      Process.sleep(100)
+      new_mobs = await_mob_joins(3)
+      new_mob_ids = MapSet.new(new_mobs, & &1.id)
 
-      # verify fresh mobs exist with new ids
-      new_nodes = WorldServer.world_nodes(world2)
-      new_mob_count = Enum.count(new_nodes, fn {_id, n} -> n.type == :mob end)
-      assert new_mob_count == 3
-
-      old_mob_ids = for {id, n} <- old_nodes, n.type == :mob, do: id
-      new_mob_ids = for {id, n} <- new_nodes, n.type == :mob, do: id
-      assert MapSet.disjoint?(MapSet.new(old_mob_ids), MapSet.new(new_mob_ids))
+      assert MapSet.size(new_mob_ids) == 3
+      assert MapSet.disjoint?(old_mob_ids, new_mob_ids)
     end
   end
 
