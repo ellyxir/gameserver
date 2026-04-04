@@ -20,5 +20,9 @@ defmodule Gameserver.WorldServer.StateETSTest do
       :ok = StateETS.save_seed(99, state_ets)
       assert StateETS.get_seed(state_ets) == 99
     end
+
+    test "returns nil when no seed has been stored", %{state_ets: state_ets} do
+      assert StateETS.get_seed(state_ets) == nil
+    end
   end
 end

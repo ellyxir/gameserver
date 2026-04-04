@@ -7,6 +7,7 @@ defmodule Gameserver.WorldServerTest do
   alias Gameserver.User
   alias Gameserver.UUID
   alias Gameserver.WorldServer
+  alias Gameserver.WorldServer.StateETS
 
   alias Gameserver.Map, as: GameMap
 
@@ -25,6 +26,48 @@ defmodule Gameserver.WorldServerTest do
   describe "genserver lifecycle" do
     test "is started and registered by application" do
       assert Process.whereis(WorldServer) != nil
+    end
+
+    test "stores map seed in state_ets on init" do
+      entity_server = start_supervised!({EntityServer, name: nil}, id: :es_seed_test)
+      state_ets_name = :"state_ets_#{System.unique_integer([:positive])}"
+      state_ets = start_supervised!({StateETS, name: state_ets_name}, id: :state_ets_seed_test)
+
+      _world =
+        start_supervised!(
+          {WorldServer, name: nil, entity_server: entity_server, state_ets: state_ets},
+          id: :ws_seed_test
+        )
+
+      seed = StateETS.get_seed(state_ets)
+      assert is_integer(seed)
+    end
+
+    test "restart produces the same map from persisted seed" do
+      entity_server = start_supervised!({EntityServer, name: nil}, id: :es_restart_test)
+      state_ets_name = :"state_ets_#{System.unique_integer([:positive])}"
+      state_ets = start_supervised!({StateETS, name: state_ets_name}, id: :state_ets_restart_test)
+
+      # first boot — generates a map and stores seed
+      world =
+        start_supervised!(
+          {WorldServer, name: nil, entity_server: entity_server, state_ets: state_ets},
+          id: :ws_restart_test
+        )
+
+      first_map = WorldServer.get_map(world)
+      stop_supervised!(:ws_restart_test)
+
+      # second boot — should regenerate the same map from persisted seed
+      world2 =
+        start_supervised!(
+          {WorldServer, name: nil, entity_server: entity_server, state_ets: state_ets},
+          id: :ws_restart_test_2
+        )
+
+      second_map = WorldServer.get_map(world2)
+      assert first_map.tiles == second_map.tiles
+      assert first_map.seed == second_map.seed
     end
   end
 
