@@ -399,6 +399,16 @@ defmodule Gameserver.MapTest do
       assert Corridor.room_path_length(with_validation.edges, up, down) >= 3
     end
 
+    test "stores seed on generated map" do
+      map = GameMap.generate(20, 20, seed: 42)
+      assert map.seed == 42
+    end
+
+    test "generates and stores a seed when none is provided" do
+      map = GameMap.generate(20, 20)
+      assert is_integer(map.seed)
+    end
+
     test "stores MST edges on generated map" do
       map = GameMap.generate(50, 50, seed: 42, room_count: 6)
 
