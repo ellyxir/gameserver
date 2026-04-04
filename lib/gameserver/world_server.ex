@@ -26,11 +26,11 @@ defmodule Gameserver.WorldServer do
           name: String.t()
         }
 
-  @typep t() :: %__MODULE__{
-           entities: %{UUID.t() => world_node()},
-           map: GameMap.t(),
-           entity_server: GenServer.server()
-         }
+  @type t() :: %__MODULE__{
+          entities: %{UUID.t() => world_node()},
+          map: GameMap.t(),
+          entity_server: GenServer.server()
+        }
 
   @typedoc "what blocked a move — wall, mob, or user at the destination"
   @type obstacle() :: :wall | {:mob, UUID.t()} | {:user, UUID.t()}

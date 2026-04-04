@@ -15,6 +15,7 @@ defmodule Gameserver.Application do
       {DNSCluster, query: Application.get_env(:gameserver, :dns_cluster_query) || :ignore},
       {Phoenix.PubSub, name: Gameserver.PubSub},
       Gameserver.EntityServer,
+      Gameserver.WorldServer.StateETS,
       Gameserver.WorldServer,
       {Registry, keys: :unique, name: Gameserver.ProcessRegistry},
       Gameserver.MobServer,
