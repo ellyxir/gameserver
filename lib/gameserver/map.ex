@@ -8,7 +8,7 @@ defmodule Gameserver.Map do
 
   alias Gameserver.Map.Corridor
 
-  defstruct [:width, :height, :tiles, rooms: []]
+  defstruct [:width, :height, :tiles, rooms: [], edges: []]
 
   @typedoc "An {x, y} coordinate pair"
   @type coord() :: {integer(), integer()}
@@ -43,7 +43,8 @@ defmodule Gameserver.Map do
           width: width(),
           height: height(),
           tiles: %{coord() => tile()},
-          rooms: [room()]
+          rooms: [room()],
+          edges: [{room(), room()}]
         }
 
   @doc """
@@ -188,20 +189,28 @@ defmodule Gameserver.Map do
     - `:room_dim_min` - minimum room dimension in tiles, applies to both width and height (default: 3)
     - `:room_dim_max` - maximum room dimension in tiles, applies to both width and height (default: 7)
     - `:max_attempts` - max placement attempts before giving up (default: 100)
+    - `:min_path_rooms` - minimum rooms on the path between stairs (default: 1, no validation)
     - `:seed` - optional seed for reproducibility (see `:rand.seed()`)
+
+  Discards and regenerates layouts where the stairs path crosses fewer than
+  `:min_path_rooms` rooms (counting both endpoints), up to 10 retries.
+  Falls back to the last generated layout if retries are exhausted.
 
   Raises `ArgumentError` if `:room_dim_min` is greater than `:room_dim_max`.
   """
+  @max_layout_retries 10
+
   @spec generate(width(), height(), keyword()) :: t()
   def generate(width, height, opts \\ []) do
     seed = Keyword.get(opts, :seed)
+    min_path_rooms = Keyword.get(opts, :min_path_rooms, 1)
 
     rand =
       if seed,
         do: :rand.seed_s(:exsss, seed),
         else: :rand.seed_s(:exsss)
 
-    room_opts = Keyword.drop(opts, [:seed])
+    room_opts = Keyword.drop(opts, [:seed, :min_path_rooms])
     config = struct!(RoomConfig, Keyword.merge([width: width, height: height], room_opts))
 
     if config.room_dim_min > config.room_dim_max do
@@ -209,11 +218,21 @@ defmodule Gameserver.Map do
             "room_dim_min (#{config.room_dim_min}) must be <= room_dim_max (#{config.room_dim_max})"
     end
 
+    do_generate(config, rand, min_path_rooms, @max_layout_retries)
+  end
+
+  @spec do_generate(
+          RoomConfig.t(),
+          rand_state(),
+          min_path_rooms :: pos_integer(),
+          retries :: non_neg_integer()
+        ) :: t()
+  defp do_generate(config, rand, min_path_rooms, retries) do
     # generate non-overlapping rooms based on the config
     {rooms, rand} = place_rooms(config, rand)
 
     # make a new grid, filled with just walls
-    game_map = new(width, height)
+    game_map = new(config.width, config.height)
 
     # carve out each room into the grid as floor tiles
     game_map =
@@ -222,24 +241,36 @@ defmodule Gameserver.Map do
       end)
 
     # connect rooms with L-shaped corridors via MST
-    {game_map, _rand} = Corridor.connect_rooms(rooms, game_map, rand)
+    {game_map, rand, edges} = Corridor.connect_rooms(rooms, game_map, rand)
 
-    # place stairs: upstairs in first room, downstairs in farthest room
-    game_map = place_stairs(game_map, rooms)
+    # check stairs path crosses enough rooms, regenerate if too short
+    {upstairs_room, downstairs_room} = stair_pair = stairs_rooms(rooms)
+    path_length = Corridor.room_path_length(edges, upstairs_room, downstairs_room)
 
-    %{game_map | rooms: rooms}
+    if path_length >= min_path_rooms or retries == 0 do
+      # place stairs: upstairs in first room, downstairs in farthest room
+      game_map = place_stairs(game_map, stair_pair)
+      %{game_map | rooms: rooms, edges: edges}
+    else
+      do_generate(config, rand, min_path_rooms, retries - 1)
+    end
   end
 
-  @spec place_stairs(t(), [room()]) :: t()
-  defp place_stairs(_map, rooms) when length(rooms) < 2 do
+  @doc """
+  Returns the rooms chosen for upstairs and downstairs stair placement.
+
+  Upstairs is in the first room, downstairs is in the room farthest
+  from it by euclidean distance between room centers.
+  """
+  @spec stairs_rooms([room()]) :: {upstairs :: room(), downstairs :: room()}
+  def stairs_rooms(rooms) when length(rooms) < 2 do
     raise ArgumentError, "need at least 2 rooms to place stairs, got #{length(rooms)}"
   end
 
-  defp place_stairs(map, rooms) do
+  def stairs_rooms(rooms) do
     [first | rest] = rooms
     first_center = room_center(first)
 
-    # find the room farthest from the first room
     farthest =
       Enum.max_by(rest, fn room ->
         {cx, cy} = room_center(room)
@@ -247,9 +278,13 @@ defmodule Gameserver.Map do
         (cx - fx) ** 2 + (cy - fy) ** 2
       end)
 
-    # place stairs at room centers so they always have adjacent floor tiles
-    map = set_tile(map, room_center(first), :upstairs)
-    set_tile(map, room_center(farthest), :downstairs)
+    {first, farthest}
+  end
+
+  @spec place_stairs(t(), {room(), room()}) :: t()
+  defp place_stairs(map, {upstairs, downstairs}) do
+    map = set_tile(map, room_center(upstairs), :upstairs)
+    set_tile(map, room_center(downstairs), :downstairs)
   end
 
   @doc """

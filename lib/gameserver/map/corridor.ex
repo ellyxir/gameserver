@@ -19,21 +19,89 @@ defmodule Gameserver.Map.Corridor do
   a corridor for each edge. Randomly chooses horizontal-first or
   vertical-first for each corridor.
 
-  Returns `{updated_map, rand_state}`.
+  Returns `{updated_map, rand_state, mst_edges}`.
   """
-  @spec connect_rooms([GameMap.room()], GameMap.t(), rand_state()) :: {GameMap.t(), rand_state()}
-  def connect_rooms([], map, rand), do: {map, rand}
-  def connect_rooms([_], map, rand), do: {map, rand}
+  @spec connect_rooms([GameMap.room()], GameMap.t(), rand_state()) ::
+          {GameMap.t(), rand_state(), [{GameMap.room(), GameMap.room()}]}
+  def connect_rooms([], map, rand), do: {map, rand, []}
+  def connect_rooms([_], map, rand), do: {map, rand, []}
 
   def connect_rooms(rooms, map, rand) do
     edges = Kruskal.mst(rooms, &euclidean_distance/2)
 
     # carve an L-shaped corridor between each pair of connected rooms
-    Enum.reduce(edges, {map, rand}, fn {room_a, room_b}, {map, rand} ->
-      center_a = GameMap.room_center(room_a)
-      center_b = GameMap.room_center(room_b)
-      carve_corridor(map, center_a, center_b, rand)
+    {map, rand} =
+      Enum.reduce(edges, {map, rand}, fn {room_a, room_b}, {map, rand} ->
+        center_a = GameMap.room_center(room_a)
+        center_b = GameMap.room_center(room_b)
+        carve_corridor(map, center_a, center_b, rand)
+      end)
+
+    {map, rand, edges}
+  end
+
+  @doc """
+  Returns the number of rooms on the path between two rooms in the minimum spanning tree.
+
+  Since a tree has exactly one path between any two nodes, uses breadth-first search
+  to find it and returns the number of rooms traversed (including both endpoints).
+  """
+  @spec room_path_length(
+          edges :: [{GameMap.room(), GameMap.room()}],
+          from :: GameMap.room(),
+          to :: GameMap.room()
+        ) :: pos_integer()
+  def room_path_length(edges, from, to) when is_list(edges) do
+    adjacency = build_adjacency(edges)
+    bfs_path_length(adjacency, from, to)
+  end
+
+  @spec build_adjacency([{GameMap.room(), GameMap.room()}]) :: %{
+          GameMap.room() => [GameMap.room()]
+        }
+  defp build_adjacency(edges) do
+    Enum.reduce(edges, %{}, fn {a, b}, acc ->
+      acc
+      |> Map.update(a, [b], &[b | &1])
+      |> Map.update(b, [a], &[a | &1])
     end)
+  end
+
+  # depth counts rooms visited (including both endpoints), not edges traversed
+  @spec bfs_path_length(%{GameMap.room() => [GameMap.room()]}, GameMap.room(), GameMap.room()) ::
+          pos_integer()
+  defp bfs_path_length(adjacency, from, to) do
+    do_bfs(:queue.in({from, 1}, :queue.new()), to, adjacency, MapSet.new([from]))
+  end
+
+  @spec do_bfs(
+          :queue.queue({GameMap.room(), pos_integer()}),
+          GameMap.room(),
+          %{GameMap.room() => [GameMap.room()]},
+          MapSet.t()
+        ) ::
+          pos_integer()
+  defp do_bfs(queue, target, adjacency, visited) do
+    case :queue.out(queue) do
+      {{:value, {^target, depth}}, _queue} ->
+        depth
+
+      {{:value, {room, depth}}, rest} ->
+        neighbors =
+          adjacency
+          |> Map.get(room, [])
+          |> Enum.reject(&MapSet.member?(visited, &1))
+
+        {rest, visited} =
+          Enum.reduce(neighbors, {rest, visited}, fn neighbor, {q, v} ->
+            {:queue.in({neighbor, depth + 1}, q), MapSet.put(v, neighbor)}
+          end)
+
+        do_bfs(rest, target, adjacency, visited)
+
+      {:empty, _queue} ->
+        raise ArgumentError, "target room not reachable from source in the given edges"
+    end
   end
 
   @spec euclidean_distance(GameMap.room(), GameMap.room()) :: float()

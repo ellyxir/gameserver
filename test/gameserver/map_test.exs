@@ -2,6 +2,7 @@ defmodule Gameserver.MapTest do
   use ExUnit.Case, async: true
 
   alias Gameserver.Map, as: GameMap
+  alias Gameserver.Map.Corridor
 
   describe "new/3" do
     test "creates a map with given dimensions" do
@@ -384,6 +385,26 @@ defmodule Gameserver.MapTest do
       {dx, dy} = down_coord
       distance = :math.sqrt((dx - ux) ** 2 + (dy - uy) ** 2)
       assert distance > 5, "expected stairs to be far apart, got distance #{distance}"
+    end
+
+    test "regenerates layout when stairs path is too short" do
+      # seed 5 with 4 rooms produces path length 2 without validation
+      without = GameMap.generate(50, 50, seed: 5, room_count: 4)
+      {up, down} = GameMap.stairs_rooms(without.rooms)
+      assert Corridor.room_path_length(without.edges, up, down) == 2
+
+      # with min_path_rooms: 3, the layout is regenerated until path >= 3
+      with_validation = GameMap.generate(50, 50, seed: 5, room_count: 4, min_path_rooms: 3)
+      {up, down} = GameMap.stairs_rooms(with_validation.rooms)
+      assert Corridor.room_path_length(with_validation.edges, up, down) >= 3
+    end
+
+    test "stores MST edges on generated map" do
+      map = GameMap.generate(50, 50, seed: 42, room_count: 6)
+
+      # N rooms -> N-1 MST edges
+      assert length(map.edges) == length(map.rooms) - 1
+      assert Enum.all?(map.edges, fn {a, b} -> a in map.rooms and b in map.rooms end)
     end
 
     test "all rooms are connected via corridors" do
