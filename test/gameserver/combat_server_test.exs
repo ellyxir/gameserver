@@ -45,6 +45,58 @@ defmodule Gameserver.CombatServerTest do
     GameMap.random_tile_in_room(map, room)
   end
 
+  describe "execute_ability/3" do
+    test "returns damage intent for melee strike against alive target" do
+      {:ok, ability} = Gameserver.Abilities.get(:melee_strike)
+      source = Entity.new(name: "alice", type: :user)
+      target = Entity.new(name: "goblin", type: :mob)
+
+      assert [{:damage, 1}] = CombatServer.execute_ability(ability, source, target)
+    end
+
+    test "returns empty list when target is dead" do
+      {:ok, ability} = Gameserver.Abilities.get(:melee_strike)
+      source = Entity.new(name: "alice", type: :user)
+      target = Entity.new(name: "goblin", type: :mob, stats: Gameserver.Stats.new(dead: true))
+
+      assert [] = CombatServer.execute_ability(ability, source, target)
+    end
+
+    test "returns intents for each effect in order" do
+      ability = %Gameserver.Ability{
+        id: :double_hit,
+        name: "Double Hit",
+        range: 1,
+        cooldown_ms: 1000,
+        effects: [
+          {Gameserver.Effects.DirectDmg, %{base: 1}},
+          {Gameserver.Effects.DirectDmg, %{base: 3}}
+        ]
+      }
+
+      source = Entity.new(name: "alice", type: :user)
+      target = Entity.new(name: "goblin", type: :mob)
+
+      assert [{:damage, 1}, {:damage, 3}] =
+               CombatServer.execute_ability(ability, source, target)
+    end
+
+    test "returns empty list for ability with no effects" do
+      ability = %Gameserver.Ability{
+        id: :empty,
+        name: "Empty",
+        range: 1,
+        cooldown_ms: 1000,
+        effects: []
+      }
+
+      source = Entity.new(name: "alice", type: :user)
+      target = Entity.new(name: "goblin", type: :mob)
+
+      assert [] = CombatServer.execute_ability(ability, source, target)
+    end
+  end
+
   describe "attack/3" do
     test "adjacent attack applies damage and returns cooldown", ctx do
       {:ok, user} = User.new("alice")

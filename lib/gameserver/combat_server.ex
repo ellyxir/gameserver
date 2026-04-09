@@ -9,8 +9,10 @@ defmodule Gameserver.CombatServer do
 
   use GenServer
 
+  alias Gameserver.Ability
   alias Gameserver.CombatEvent
   alias Gameserver.Cooldowns
+  alias Gameserver.Effect
   alias Gameserver.Entity
   alias Gameserver.EntityServer
   alias Gameserver.HpStat
@@ -98,6 +100,20 @@ defmodule Gameserver.CombatServer do
     else
       {:error, reason} -> {:reply, {:error, reason}, state}
     end
+  end
+
+  @doc """
+  Executes an ability's effects against a target, returning a list of intents.
+
+  Iterates the ability's effect list, calling `valid?/3` then `apply/3` on each.
+  Effects that fail validation are skipped.
+  """
+  @spec execute_ability(Ability.t(), source :: Entity.t(), target :: Entity.t()) ::
+          [Effect.intent()]
+  def execute_ability(%Ability{effects: effects}, %Entity{} = source, %Entity{} = target) do
+    effects
+    |> Enum.filter(fn {module, args} -> module.valid?(args, source, target) end)
+    |> Enum.map(fn {module, args} -> module.apply(args, source, target) end)
   end
 
   @doc """
