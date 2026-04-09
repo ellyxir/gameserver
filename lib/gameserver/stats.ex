@@ -4,12 +4,14 @@ defmodule Gameserver.Stats do
   """
 
   alias Gameserver.BaseStat
+  alias Gameserver.HpStat
+  alias Gameserver.MaxHpStat
 
   defstruct str: %BaseStat{base: 10},
             dex: %BaseStat{base: 10},
             con: %BaseStat{base: 10},
-            hp: 10,
-            max_hp: 10,
+            hp: %HpStat{base_stat: %BaseStat{base: 10}},
+            max_hp: %MaxHpStat{},
             attack_power: 1,
             dead: false
 
@@ -18,8 +20,8 @@ defmodule Gameserver.Stats do
           str: BaseStat.t(),
           dex: BaseStat.t(),
           con: BaseStat.t(),
-          hp: non_neg_integer(),
-          max_hp: pos_integer(),
+          hp: HpStat.t(),
+          max_hp: MaxHpStat.t(),
           attack_power: non_neg_integer(),
           dead: boolean()
         }

@@ -12,6 +12,12 @@ defmodule Gameserver.HpStat do
   @type t() :: %__MODULE__{
           base_stat: BaseStat.t()
         }
+
+  @spec apply_damage(t(), non_neg_integer()) :: t()
+  def apply_damage(%__MODULE__{base_stat: base_stat} = hp, damage) do
+    updated_hp = max(0, base_stat.base - damage)
+    %{hp | base_stat: %{base_stat | base: updated_hp}}
+  end
 end
 
 defimpl Gameserver.Stat, for: Gameserver.HpStat do

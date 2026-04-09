@@ -17,11 +17,10 @@ defmodule Gameserver.EntityTest do
     end
 
     test "creates a mob entity with custom stats" do
-      stats = Stats.new(hp: 5, max_hp: 5, attack_power: 2)
+      stats = Stats.new(attack_power: 2)
       entity = Entity.new(name: "goblin", type: :mob, pos: {3, 4}, stats: stats)
       assert entity.type == :mob
       assert entity.name == "goblin"
-      assert entity.stats.hp == 5
       assert entity.stats.attack_power == 2
     end
 

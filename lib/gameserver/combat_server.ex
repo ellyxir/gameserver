@@ -13,6 +13,8 @@ defmodule Gameserver.CombatServer do
   alias Gameserver.Cooldowns
   alias Gameserver.Entity
   alias Gameserver.EntityServer
+  alias Gameserver.HpStat
+  alias Gameserver.Stat
   alias Gameserver.UUID
   alias Gameserver.WorldServer
 
@@ -77,7 +79,7 @@ defmodule Gameserver.CombatServer do
          {:ok, defender} <- EntityServer.get_entity(defender_id, entity_server),
          :ok <- check_alive(defender),
          :ok <- check_adjacent(attacker, defender) do
-      defender_hp_before = defender.stats.hp
+      defender_hp_before = Stat.effective(defender.stats.hp, defender.stats)
 
       update_fn = perform_attack(attacker, defender)
 
@@ -88,7 +90,7 @@ defmodule Gameserver.CombatServer do
           entity_server
         )
 
-      defender_hp_after = defender.stats.hp
+      defender_hp_after = Stat.effective(defender.stats.hp, defender.stats)
       damage_taken = defender_hp_before - defender_hp_after
       broadcast_combat_event(attacker, defender, damage_taken, defender_hp_after)
 
@@ -107,12 +109,12 @@ defmodule Gameserver.CombatServer do
     damage = attacker.stats.attack_power
 
     fn e ->
-      updated_hp = max(0, e.stats.hp - damage)
+      hp = HpStat.apply_damage(e.stats.hp, damage)
 
       # once dead, always dead
-      is_dead = e.stats.dead || updated_hp <= 0
+      is_dead = e.stats.dead || Stat.effective(hp, e.stats) <= 0
 
-      %{e | stats: %{e.stats | hp: updated_hp, dead: is_dead}}
+      %{e | stats: %{e.stats | hp: hp, dead: is_dead}}
     end
   end
 

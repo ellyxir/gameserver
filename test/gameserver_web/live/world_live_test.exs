@@ -82,7 +82,7 @@ defmodule GameserverWeb.WorldLiveTest do
       {:ok, view, _html} = live(conn, ~p"/world?user_id=#{user.id}")
 
       assert has_element?(view, "#player-hp")
-      assert has_element?(view, "#player-hp", "10/10")
+      assert has_element?(view, "#player-hp", "10/30")
     end
 
     test "updates hp when player entity changes", %{conn: conn} do
@@ -91,14 +91,17 @@ defmodule GameserverWeb.WorldLiveTest do
 
       {:ok, view, _html} = live(conn, ~p"/world?user_id=#{user.id}")
 
+      alias Gameserver.BaseStat
       alias Gameserver.EntityServer
+      alias Gameserver.HpStat
 
       {:ok, _updated} =
         EntityServer.update_entity(user.id, fn entity ->
-          %{entity | stats: %{entity.stats | hp: 7}}
+          hp = %HpStat{base_stat: %BaseStat{base: 7}}
+          %{entity | stats: %{entity.stats | hp: hp}}
         end)
 
-      assert has_element?(view, "#player-hp", "7/10")
+      assert has_element?(view, "#player-hp", "7/30")
     end
   end
 

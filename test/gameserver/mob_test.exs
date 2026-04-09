@@ -98,7 +98,8 @@ defmodule Gameserver.MobTest do
       assert_receive {:combat_event, %CombatEvent{attacker_id: ^mob_id, defender_id: ^player_id}}
 
       {:ok, player_entity} = EntityServer.get_entity(player_id, ctx.entity_server)
-      assert player_entity.stats.hp == 9
+      player_hp = Gameserver.Stat.effective(player_entity.stats.hp, player_entity.stats)
+      assert player_hp == 9
     end
 
     test "dead mob leaves the world", ctx do
