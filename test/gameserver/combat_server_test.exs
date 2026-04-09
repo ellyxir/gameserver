@@ -109,11 +109,10 @@ defmodule Gameserver.CombatServerTest do
 
       assert is_integer(cooldown_ms) and cooldown_ms > 0
 
-      {:ok, attacker} = EntityServer.get_entity(user.id, ctx.entity_server)
       {:ok, defender} = EntityServer.get_entity(mob.id, ctx.entity_server)
       defender_hp = Stat.effective(defender.stats.hp, defender.stats)
-      # default hp is 10, attack_power is 1
-      assert defender_hp == 10 - attacker.stats.attack_power
+      # default hp is 10, melee_strike base damage is 1
+      assert defender_hp == 9
     end
 
     test "returns not_found when attacker does not exist", ctx do
@@ -206,52 +205,37 @@ defmodule Gameserver.CombatServerTest do
 
       {:ok, _} = CombatServer.attack(user.id, mob.id, ctx.combat_server)
 
-      {:ok, attacker} = EntityServer.get_entity(user.id, ctx.entity_server)
-
       assert_receive {:combat_event, event}
       assert event.attacker_id == user.id
       assert event.defender_id == mob.id
-      assert event.damage == attacker.stats.attack_power
-      mob_hp = Stat.effective(mob.stats.hp, mob.stats)
-      assert event.defender_hp == mob_hp - attacker.stats.attack_power
+      assert event.damage == 1
+      assert event.defender_hp == 9
     end
 
-    test "perform_attack modifies defender" do
-      attacker = Entity.new(name: "alice", type: :user)
-      defender = Entity.new(name: "goblin", type: :mob, pos: {1, 1})
-      update_fn = CombatServer.perform_attack(attacker, defender)
-      updated_defender = update_fn.(defender)
+    test "defender is marked dead when hp reaches zero", ctx do
+      {:ok, user} = User.new("alice")
+      {:ok, _pos} = WorldServer.join_user(user, ctx.world_server)
 
-      assert Stat.effective(updated_defender.stats.hp, updated_defender.stats) <
-               Stat.effective(updated_defender.stats.max_hp, updated_defender.stats)
-    end
+      mob =
+        Entity.new(
+          name: "goblin",
+          type: :mob,
+          pos: spawn_adjacent_pos(ctx.world_server),
+          stats:
+            Gameserver.Stats.new(
+              hp: %Gameserver.HpStat{
+                base_stat: %Gameserver.BaseStat{base: 1}
+              }
+            )
+        )
 
-    test "perform_attack clamps defender hp at zero" do
-      attacker = Entity.new(name: "alice", type: :user)
-      attacker = %{attacker | stats: %{attacker.stats | attack_power: 50}}
+      {:ok, _pos} = WorldServer.join_entity(mob, ctx.world_server)
 
-      defender = Entity.new(name: "goblin", type: :mob, pos: {1, 1})
-      update_fn = CombatServer.perform_attack(attacker, defender)
-      updated_defender = update_fn.(defender)
-      assert Stat.effective(updated_defender.stats.hp, updated_defender.stats) == 0
-    end
+      {:ok, _} = CombatServer.attack(user.id, mob.id, ctx.combat_server)
 
-    test "perform_attack doesnt allow zombies" do
-      attacker = Entity.new(name: "alice", type: :user)
-      defender = Entity.new(name: "goblin", type: :mob, pos: {1, 1})
-      defender = %{defender | stats: %{defender.stats | dead: true}}
-      update_fn = CombatServer.perform_attack(attacker, defender)
-      updated_defender = update_fn.(defender)
-      assert updated_defender.stats.dead
-    end
-
-    test "perform_attack sets dead" do
-      attacker = Entity.new(name: "alice", type: :user)
-      attacker = %{attacker | stats: %{attacker.stats | attack_power: 50}}
-      defender = Entity.new(name: "goblin", type: :mob, pos: {1, 1})
-      update_fn = CombatServer.perform_attack(attacker, defender)
-      updated_defender = update_fn.(defender)
-      assert updated_defender.stats.dead
+      {:ok, defender} = EntityServer.get_entity(mob.id, ctx.entity_server)
+      assert defender.stats.dead
+      assert Stat.effective(defender.stats.hp, defender.stats) == 0
     end
   end
 end
