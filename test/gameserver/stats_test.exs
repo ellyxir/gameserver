@@ -12,6 +12,7 @@ defmodule Gameserver.StatsTest do
       assert Stat.effective(stats.hp, stats) == 10
       assert Stat.effective(stats.max_hp, stats) == 30
       assert stats.attack_power == 1
+      assert stats.defense == 0
       assert stats.str == %BaseStat{base: 10}
       assert stats.dex == %BaseStat{base: 10}
       assert stats.con == %BaseStat{base: 10}

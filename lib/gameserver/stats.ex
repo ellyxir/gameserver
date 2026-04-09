@@ -13,6 +13,7 @@ defmodule Gameserver.Stats do
             hp: %HpStat{base_stat: %BaseStat{base: 10}},
             max_hp: %MaxHpStat{},
             attack_power: 1,
+            defense: 0,
             dead: false
 
   @typedoc "Combat stats for an entity"
@@ -23,6 +24,7 @@ defmodule Gameserver.Stats do
           hp: HpStat.t(),
           max_hp: MaxHpStat.t(),
           attack_power: non_neg_integer(),
+          defense: non_neg_integer(),
           dead: boolean()
         }
 
