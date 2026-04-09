@@ -26,9 +26,6 @@ defmodule Gameserver.Effect do
   # there will be other intents such as DoTs
   @type intent() :: {:damage, damage :: non_neg_integer()}
 
-  @typedoc "Result of applying an effect."
-  @type result() :: {:ok, intent()}
-
   @doc """
   Returns true if the effect can be applied given the current source and target.
   `args` is the config map from the ability's `{module, args}` tuple.
@@ -40,5 +37,5 @@ defmodule Gameserver.Effect do
   `args` is the config map from the ability's `{module, args}` tuple.
   Assumes `valid?/3` returned true; behaviour is undefined otherwise.
   """
-  @callback apply(args :: map(), source :: Entity.t(), target :: Entity.t()) :: result()
+  @callback apply(args :: map(), source :: Entity.t(), target :: Entity.t()) :: intent()
 end
