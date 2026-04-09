@@ -16,7 +16,7 @@ defmodule Gameserver.Abilities do
        tags: [:physical, :melee],
        range: 1,
        cooldown_ms: 1000,
-       effects: [{DirectDmg, %{base: 10}}]
+       effects: [{DirectDmg, %{base: 1}}]
      }}
   end
 
@@ -28,7 +28,7 @@ defmodule Gameserver.Abilities do
        tags: [:physical, :melee],
        range: 1,
        cooldown_ms: 1500,
-       effects: [{DirectDmg, %{base: 18}}]
+       effects: [{DirectDmg, %{base: 3}}]
      }}
   end
 

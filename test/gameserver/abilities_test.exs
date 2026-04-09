@@ -12,7 +12,7 @@ defmodule Gameserver.AbilitiesTest do
       assert ability.range == 1
       assert ability.cooldown_ms == 1000
       assert ability.tags == [:physical, :melee]
-      assert ability.effects == [{DirectDmg, %{base: 10}}]
+      assert ability.effects == [{DirectDmg, %{base: 1}}]
     end
 
     test "returns upper_cut ability with more damage and longer cooldown" do
@@ -21,7 +21,7 @@ defmodule Gameserver.AbilitiesTest do
       assert ability.range == 1
       assert ability.cooldown_ms == 1500
       assert ability.tags == [:physical, :melee]
-      assert ability.effects == [{DirectDmg, %{base: 18}}]
+      assert ability.effects == [{DirectDmg, %{base: 3}}]
     end
 
     test "returns error for unknown ability" do

@@ -9,8 +9,11 @@ defmodule Gameserver.CombatServer do
 
   use GenServer
 
+  alias Gameserver.Abilities
+  alias Gameserver.Ability
   alias Gameserver.CombatEvent
   alias Gameserver.Cooldowns
+  alias Gameserver.Effect
   alias Gameserver.Entity
   alias Gameserver.EntityServer
   alias Gameserver.HpStat
@@ -42,7 +45,6 @@ defmodule Gameserver.CombatServer do
     GenServer.start_link(__MODULE__, opts, name: name)
   end
 
-  @attack_cooldown_ms 1000
   @combat_topic "combat:events"
 
   @doc "Returns the PubSub topic for combat event broadcasts."
@@ -78,10 +80,12 @@ defmodule Gameserver.CombatServer do
     with {:ok, attacker} <- EntityServer.get_entity(attacker_id, entity_server),
          {:ok, defender} <- EntityServer.get_entity(defender_id, entity_server),
          :ok <- check_alive(defender),
-         :ok <- check_adjacent(attacker, defender) do
+         {:ok, ability} <- Abilities.get(:melee_strike),
+         :ok <- check_adjacent(attacker, defender, ability.range) do
       defender_hp_before = Stat.effective(defender.stats.hp, defender.stats)
 
-      update_fn = perform_attack(attacker, defender)
+      intents = execute_ability(ability, attacker, defender)
+      update_fn = build_entity_update_fn(intents)
 
       {:ok, defender} =
         EntityServer.update_entity(
@@ -94,27 +98,35 @@ defmodule Gameserver.CombatServer do
       damage_taken = defender_hp_before - defender_hp_after
       broadcast_combat_event(attacker, defender, damage_taken, defender_hp_after)
 
-      {:reply, {:ok, {:attack, @attack_cooldown_ms}}, state}
+      {:reply, {:ok, {:attack, ability.cooldown_ms}}, state}
     else
       {:error, reason} -> {:reply, {:error, reason}, state}
     end
   end
 
   @doc """
-  performs attack, returns the function to be executed on the entityserver to update the defender
-  note this is a pure function, doesn't update the entityserver
+  Executes an ability's effects against a target, returning a list of intents.
+
+  Iterates the ability's effect list, calling `valid?/3` then `apply/3` on each.
+  Effects that fail validation are skipped.
   """
-  @spec perform_attack(Entity.t(), Entity.t()) :: EntityServer.entity_transform_function()
-  def perform_attack(%Entity{} = attacker, %Entity{} = _defender) do
-    damage = attacker.stats.attack_power
+  @spec execute_ability(Ability.t(), source :: Entity.t(), target :: Entity.t()) ::
+          [Effect.intent()]
+  def execute_ability(%Ability{effects: effects}, %Entity{} = source, %Entity{} = target) do
+    effects
+    |> Enum.filter(fn {module, args} -> module.valid?(args, source, target) end)
+    |> Enum.map(fn {module, args} -> module.apply(args, source, target) end)
+  end
 
-    fn e ->
-      hp = HpStat.apply_damage(e.stats.hp, damage)
-
-      # once dead, always dead
-      is_dead = e.stats.dead || Stat.effective(hp, e.stats) <= 0
-
-      %{e | stats: %{e.stats | hp: hp, dead: is_dead}}
+  @spec build_entity_update_fn([Effect.intent()]) :: EntityServer.entity_transform_function()
+  defp build_entity_update_fn(intents) do
+    fn entity ->
+      # when we add more intents, we'll have to update this pattern match
+      Enum.reduce(intents, entity, fn {:damage, amount}, e ->
+        hp = HpStat.apply_damage(e.stats.hp, amount)
+        is_dead = e.stats.dead || Stat.effective(hp, e.stats) <= 0
+        %{e | stats: %{e.stats | hp: hp, dead: is_dead}}
+      end)
     end
   end
 
@@ -137,13 +149,14 @@ defmodule Gameserver.CombatServer do
   defp check_alive(%Entity{stats: %{dead: false}}), do: :ok
   defp check_alive(%Entity{stats: %{dead: true}}), do: {:error, :target_dead}
 
-  @spec check_adjacent(Entity.t(), Entity.t()) ::
+  @spec check_adjacent(Entity.t(), Entity.t(), range :: pos_integer()) ::
           :ok | {:error, :out_of_range}
   defp check_adjacent(
-         %Entity{pos: {a_x, a_y}} = _attacker,
-         %Entity{pos: {d_x, d_y}} = _defender
+         %Entity{pos: {a_x, a_y}},
+         %Entity{pos: {d_x, d_y}},
+         range
        ) do
-    if abs(a_x - d_x) <= 1 and abs(a_y - d_y) <= 1 do
+    if abs(a_x - d_x) <= range and abs(a_y - d_y) <= range do
       :ok
     else
       {:error, :out_of_range}
