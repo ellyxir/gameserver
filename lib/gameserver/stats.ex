@@ -3,31 +3,33 @@ defmodule Gameserver.Stats do
   Combat stats shared by players and mobs.
   """
 
-  defstruct hp: 10, max_hp: 10, attack_power: 1, dead: false
+  alias Gameserver.BaseStat
+  alias Gameserver.HpStat
+  alias Gameserver.MaxHpStat
+
+  defstruct str: %BaseStat{base: 10},
+            dex: %BaseStat{base: 10},
+            con: %BaseStat{base: 10},
+            hp: %HpStat{base_stat: %BaseStat{base: 10}},
+            max_hp: %MaxHpStat{},
+            attack_power: 1,
+            dead: false
 
   @typedoc "Combat stats for an entity"
   @type t() :: %__MODULE__{
-          hp: non_neg_integer(),
-          max_hp: pos_integer(),
+          str: BaseStat.t(),
+          dex: BaseStat.t(),
+          con: BaseStat.t(),
+          hp: HpStat.t(),
+          max_hp: MaxHpStat.t(),
           attack_power: non_neg_integer(),
           dead: boolean()
         }
 
-  @typedoc false
-  @typep option() ::
-           {:hp, non_neg_integer()}
-           | {:max_hp, pos_integer()}
-           | {:attack_power, non_neg_integer()}
-
-  @typedoc false
-  @typep options() :: [option()]
-
   @doc """
   Creates a new stats struct with default values.
-
-  Accepts optional keyword overrides for `:hp`, `:max_hp`, and `:attack_power`.
   """
-  @spec new(options()) :: t()
+  @spec new(keyword()) :: t()
   def new(opts \\ []) do
     struct!(__MODULE__, opts)
   end

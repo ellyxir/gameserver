@@ -6,6 +6,7 @@ defmodule Gameserver.CombatServerTest do
   alias Gameserver.Entity
   alias Gameserver.EntityServer
   alias Gameserver.Map, as: GameMap
+  alias Gameserver.Stat
   alias Gameserver.User
   alias Gameserver.UUID
   alias Gameserver.WorldServer
@@ -58,7 +59,9 @@ defmodule Gameserver.CombatServerTest do
 
       {:ok, attacker} = EntityServer.get_entity(user.id, ctx.entity_server)
       {:ok, defender} = EntityServer.get_entity(mob.id, ctx.entity_server)
-      assert defender.stats.hp == defender.stats.max_hp - attacker.stats.attack_power
+      defender_hp = Stat.effective(defender.stats.hp, defender.stats)
+      # default hp is 10, attack_power is 1
+      assert defender_hp == 10 - attacker.stats.attack_power
     end
 
     test "returns not_found when attacker does not exist", ctx do
@@ -108,7 +111,9 @@ defmodule Gameserver.CombatServerTest do
 
       assert_receive {:entity_updated, updated_mob}
       assert updated_mob.id == mob.id
-      assert updated_mob.stats.hp < updated_mob.stats.max_hp
+
+      assert Stat.effective(updated_mob.stats.hp, updated_mob.stats) <
+               Stat.effective(updated_mob.stats.max_hp, updated_mob.stats)
     end
 
     test "returns out_of_range when entities are not adjacent", ctx do
@@ -155,7 +160,8 @@ defmodule Gameserver.CombatServerTest do
       assert event.attacker_id == user.id
       assert event.defender_id == mob.id
       assert event.damage == attacker.stats.attack_power
-      assert event.defender_hp == mob.stats.hp - attacker.stats.attack_power
+      mob_hp = Stat.effective(mob.stats.hp, mob.stats)
+      assert event.defender_hp == mob_hp - attacker.stats.attack_power
     end
 
     test "perform_attack modifies defender" do
@@ -163,18 +169,19 @@ defmodule Gameserver.CombatServerTest do
       defender = Entity.new(name: "goblin", type: :mob, pos: {1, 1})
       update_fn = CombatServer.perform_attack(attacker, defender)
       updated_defender = update_fn.(defender)
-      assert updated_defender.stats.hp < updated_defender.stats.max_hp
+
+      assert Stat.effective(updated_defender.stats.hp, updated_defender.stats) <
+               Stat.effective(updated_defender.stats.max_hp, updated_defender.stats)
     end
 
     test "perform_attack clamps defender hp at zero" do
       attacker = Entity.new(name: "alice", type: :user)
-      attacker = %{attacker | stats: %{attacker.stats | attack_power: 5}}
+      attacker = %{attacker | stats: %{attacker.stats | attack_power: 50}}
 
       defender = Entity.new(name: "goblin", type: :mob, pos: {1, 1})
-      defender = %{defender | stats: %{defender.stats | hp: 1}}
       update_fn = CombatServer.perform_attack(attacker, defender)
       updated_defender = update_fn.(defender)
-      assert updated_defender.stats.hp == 0
+      assert Stat.effective(updated_defender.stats.hp, updated_defender.stats) == 0
     end
 
     test "perform_attack doesnt allow zombies" do
@@ -188,8 +195,8 @@ defmodule Gameserver.CombatServerTest do
 
     test "perform_attack sets dead" do
       attacker = Entity.new(name: "alice", type: :user)
+      attacker = %{attacker | stats: %{attacker.stats | attack_power: 50}}
       defender = Entity.new(name: "goblin", type: :mob, pos: {1, 1})
-      defender = %{defender | stats: %{defender.stats | hp: 1}}
       update_fn = CombatServer.perform_attack(attacker, defender)
       updated_defender = update_fn.(defender)
       assert updated_defender.stats.dead
