@@ -5,6 +5,7 @@ defmodule Gameserver.Abilities do
 
   alias Gameserver.Ability
   alias Gameserver.Effects.DirectDmg
+  alias Gameserver.Effects.StatBuff
 
   @doc "Returns the ability with the given id, or `{:error, :not_found}`."
   @spec get(atom()) :: {:ok, Ability.t()} | {:error, :not_found}
@@ -29,6 +30,30 @@ defmodule Gameserver.Abilities do
        range: 1,
        cooldown_ms: 1500,
        effects: [{DirectDmg, %{base: 3}}]
+     }}
+  end
+
+  def get(:battle_shout) do
+    {:ok,
+     %Ability{
+       id: :battle_shout,
+       name: "Battle Shout",
+       tags: [:physical, :buff],
+       range: 0,
+       cooldown_ms: 5000,
+       effects: [{StatBuff, %{stat: :str, amount: 3, effect_name: "Battle Shout"}}]
+     }}
+  end
+
+  def get(:fortify) do
+    {:ok,
+     %Ability{
+       id: :fortify,
+       name: "Fortify",
+       tags: [:physical, :buff],
+       range: 0,
+       cooldown_ms: 5000,
+       effects: [{StatBuff, %{stat: :con, amount: 2, effect_name: "Fortify"}}]
      }}
   end
 
