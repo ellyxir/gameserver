@@ -3,8 +3,8 @@ defmodule Gameserver.Effect do
   Behaviour for effects applied by abilities.
 
   Each effect module implements `apply/3` and `valid?/3`.
-  Effects return intent describing what they want to happen.
-  Caller handles the bookkeeping (adding effect to an entity for example)
+  `apply/3` returns a transform function that mutates a target entity.
+  The engine collects transforms and reduces them over the target.
   Callers must check `valid?/3` before calling `apply/3`.
 
   Abilities define effects as `{module, args}` tuples, e.g.
@@ -22,9 +22,8 @@ defmodule Gameserver.Effect do
           name: String.t()
         }
 
-  @typedoc "Intent returned by an effect describing what should happen."
-  # there will be other intents such as DoTs
-  @type intent() :: {:damage, damage :: non_neg_integer()}
+  @typedoc "Transform function returned by an effect that mutates a target entity."
+  @type transform() :: (Entity.t() -> Entity.t())
 
   @doc """
   Returns true if the effect can be applied given the current source and target.
@@ -33,9 +32,9 @@ defmodule Gameserver.Effect do
   @callback valid?(args :: map(), source :: Entity.t(), target :: Entity.t()) :: boolean()
 
   @doc """
-  Applies the effect and returns intent describing what should happen.
+  Returns a transform function that applies the effect to a target entity.
   `args` is the config map from the ability's `{module, args}` tuple.
   Assumes `valid?/3` returned true; behaviour is undefined otherwise.
   """
-  @callback apply(args :: map(), source :: Entity.t(), target :: Entity.t()) :: intent()
+  @callback apply(args :: map(), source :: Entity.t(), target :: Entity.t()) :: transform()
 end

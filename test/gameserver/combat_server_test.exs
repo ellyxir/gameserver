@@ -46,12 +46,15 @@ defmodule Gameserver.CombatServerTest do
   end
 
   describe "execute_ability/3" do
-    test "returns damage intent for melee strike against alive target" do
+    test "returns transform for melee strike against alive target" do
       {:ok, ability} = Gameserver.Abilities.get(:melee_strike)
       source = Entity.new(name: "alice", type: :user)
       target = Entity.new(name: "goblin", type: :mob)
 
-      assert [{:damage, 1}] = CombatServer.execute_ability(ability, source, target)
+      assert [transform] = CombatServer.execute_ability(ability, source, target)
+      assert is_function(transform, 1)
+      updated = transform.(target)
+      assert Stat.effective(updated.stats.hp, updated.stats) == 9
     end
 
     test "returns empty list when target is dead" do
@@ -62,7 +65,7 @@ defmodule Gameserver.CombatServerTest do
       assert [] = CombatServer.execute_ability(ability, source, target)
     end
 
-    test "returns intents for each effect in order" do
+    test "returns transforms for each effect in order" do
       ability = %Gameserver.Ability{
         id: :double_hit,
         name: "Double Hit",
@@ -77,8 +80,13 @@ defmodule Gameserver.CombatServerTest do
       source = Entity.new(name: "alice", type: :user)
       target = Entity.new(name: "goblin", type: :mob)
 
-      assert [{:damage, 1}, {:damage, 3}] =
-               CombatServer.execute_ability(ability, source, target)
+      assert [t1, t2] = CombatServer.execute_ability(ability, source, target)
+      assert is_function(t1, 1)
+      assert is_function(t2, 1)
+      updated = t1.(target)
+      assert Stat.effective(updated.stats.hp, updated.stats) == 9
+      updated = t2.(target)
+      assert Stat.effective(updated.stats.hp, updated.stats) == 7
     end
 
     test "returns empty list for ability with no effects" do
