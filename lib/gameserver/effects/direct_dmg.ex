@@ -9,11 +9,12 @@ defmodule Gameserver.Effects.DirectDmg do
   alias Gameserver.Entity
   alias Gameserver.Stats
 
-  @spec valid?(map(), Entity.t(), Entity.t()) :: boolean()
+  @spec valid?(args :: map(), source :: Entity.t(), target :: Entity.t()) :: boolean()
   def valid?(_args, _source, %Entity{stats: %{dead: false}}), do: true
   def valid?(_args, _source, %Entity{stats: %{dead: true}}), do: false
 
-  @spec apply(map(), Entity.t(), Entity.t()) :: Gameserver.Effect.intent()
+  @spec apply(args :: map(), source :: Entity.t(), target :: Entity.t()) ::
+          Gameserver.Effect.intent()
   def apply(%{base: base}, _source, %Entity{stats: %Stats{defense: defense}}) do
     {:damage, calculate_damage(base, defense)}
   end
