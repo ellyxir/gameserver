@@ -14,16 +14,14 @@ defmodule Gameserver.MaxHpStatTest do
     end
 
     test "includes bonuses from inner base stat" do
-      effect = %Gameserver.Effect{name: "fortitude"}
-      inner = BaseStat.add_bonus(%BaseStat{}, 20, effect)
+      {inner, _id} = BaseStat.add_bonus(%BaseStat{}, 20)
       stats = Stats.new(max_hp: %MaxHpStat{base_stat: inner}, con: %BaseStat{base: 10})
       # 10 + 10*2 (from con) + 20 (bonus)
       assert Stat.effective(stats.max_hp, stats) == 50
     end
 
     test "con bonuses flow through to max hp" do
-      effect = %Gameserver.Effect{name: "con buff"}
-      con = BaseStat.add_bonus(%BaseStat{base: 10}, 4, effect)
+      {con, _id} = BaseStat.add_bonus(%BaseStat{base: 10}, 4)
       stats = Stats.new(max_hp: %MaxHpStat{}, con: con)
       # 10 + (10+4)*2
       assert Stat.effective(stats.max_hp, stats) == 38

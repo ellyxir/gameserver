@@ -1,7 +1,6 @@
 defmodule Gameserver.Effects.StatBuffTest do
   use ExUnit.Case, async: true
 
-  alias Gameserver.Effect
   alias Gameserver.Effects.StatBuff
   alias Gameserver.Entity
   alias Gameserver.Stat
@@ -16,13 +15,13 @@ defmodule Gameserver.Effects.StatBuffTest do
     test "returns true when target is alive" do
       source = make_entity()
       target = make_entity()
-      assert StatBuff.valid?(%{stat: :str, amount: 3, effect_name: "Buff"}, source, target)
+      assert StatBuff.valid?(%{stat: :str, amount: 3}, source, target)
     end
 
     test "returns false when target is dead" do
       source = make_entity()
       target = make_entity(stats: [dead: true])
-      refute StatBuff.valid?(%{stat: :str, amount: 3, effect_name: "Buff"}, source, target)
+      refute StatBuff.valid?(%{stat: :str, amount: 3}, source, target)
     end
   end
 
@@ -31,33 +30,32 @@ defmodule Gameserver.Effects.StatBuffTest do
       source = make_entity()
       target = make_entity()
 
-      transform =
-        StatBuff.apply(%{stat: :str, amount: 3, effect_name: "Battle Shout"}, source, target)
+      transform = StatBuff.apply(%{stat: :str, amount: 3}, source, target)
 
       updated = transform.(target)
       assert Stat.effective(updated.stats.str, updated.stats) == 13
     end
 
-    test "the bonus has the correct %Effect{} backlink" do
+    test "the bonus stores the amount and a unique id" do
       source = make_entity()
       target = make_entity()
 
-      transform =
-        StatBuff.apply(%{stat: :str, amount: 3, effect_name: "Battle Shout"}, source, target)
+      transform = StatBuff.apply(%{stat: :str, amount: 3}, source, target)
 
       updated = transform.(target)
-      [{3, %Effect{name: "Battle Shout"}}] = updated.stats.str.bonuses
+      [{3, id}] = updated.stats.str.bonuses
+      assert is_binary(id)
     end
 
-    test "bonus can be removed via the backlink" do
+    test "bonus can be removed via its id" do
       source = make_entity()
       target = make_entity()
 
-      transform =
-        StatBuff.apply(%{stat: :str, amount: 3, effect_name: "Battle Shout"}, source, target)
+      transform = StatBuff.apply(%{stat: :str, amount: 3}, source, target)
 
       updated = transform.(target)
-      cleaned = Entity.remove_stat_bonus(updated, :str, %Effect{name: "Battle Shout"})
+      [{3, id}] = updated.stats.str.bonuses
+      cleaned = Entity.remove_stat_bonus(updated, :str, id)
       assert Stat.effective(cleaned.stats.str, cleaned.stats) == 10
     end
 
@@ -65,8 +63,8 @@ defmodule Gameserver.Effects.StatBuffTest do
       source = make_entity()
       target = make_entity()
 
-      t1 = StatBuff.apply(%{stat: :str, amount: 3, effect_name: "Battle Shout"}, source, target)
-      t2 = StatBuff.apply(%{stat: :str, amount: 5, effect_name: "War Cry"}, source, target)
+      t1 = StatBuff.apply(%{stat: :str, amount: 3}, source, target)
+      t2 = StatBuff.apply(%{stat: :str, amount: 5}, source, target)
 
       updated = target |> t1.() |> t2.()
       assert Stat.effective(updated.stats.str, updated.stats) == 18
@@ -76,8 +74,7 @@ defmodule Gameserver.Effects.StatBuffTest do
       source = make_entity()
       target = make_entity()
 
-      transform =
-        StatBuff.apply(%{stat: :con, amount: 2, effect_name: "Fortify"}, source, target)
+      transform = StatBuff.apply(%{stat: :con, amount: 2}, source, target)
 
       updated = transform.(target)
       assert Stat.effective(updated.stats.con, updated.stats) == 12

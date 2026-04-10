@@ -2,7 +2,6 @@ defmodule Gameserver.HpStatTest do
   use ExUnit.Case, async: true
 
   alias Gameserver.BaseStat
-  alias Gameserver.Effect
   alias Gameserver.HpStat
   alias Gameserver.MaxHpStat
   alias Gameserver.Stat
@@ -23,15 +22,13 @@ defmodule Gameserver.HpStatTest do
     end
 
     test "temp hp bonus adds to effective value" do
-      effect = %Effect{name: "temp hp"}
-      inner = BaseStat.add_bonus(%BaseStat{base: 20}, 5, effect)
+      {inner, _id} = BaseStat.add_bonus(%BaseStat{base: 20}, 5)
       stats = Stats.new(hp: %HpStat{base_stat: inner}, max_hp: @default_max)
       assert Stat.effective(stats.hp, stats) == 25
     end
 
     test "temp hp bonus still clamps to max hp" do
-      effect = %Effect{name: "temp hp"}
-      inner = BaseStat.add_bonus(%BaseStat{base: 28}, 10, effect)
+      {inner, _id} = BaseStat.add_bonus(%BaseStat{base: 28}, 10)
       stats = Stats.new(hp: %HpStat{base_stat: inner}, max_hp: @default_max)
       assert Stat.effective(stats.hp, stats) == 30
     end

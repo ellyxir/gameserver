@@ -14,14 +14,6 @@ defmodule Gameserver.Effect do
 
   alias Gameserver.Entity
 
-  @enforce_keys [:name]
-  defstruct [:name]
-
-  @typedoc "A named effect reference used in `BaseStat` module to track where stat bonuses came from."
-  @type t() :: %__MODULE__{
-          name: String.t()
-        }
-
   @typedoc "Transform function returned by an effect that mutates a target entity."
   @type transform() :: (Entity.t() -> Entity.t())
 
