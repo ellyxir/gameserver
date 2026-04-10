@@ -10,9 +10,10 @@ defmodule Gameserver.Entity do
   alias Gameserver.Cooldowns
   alias Gameserver.Map, as: GameMap
   alias Gameserver.Stats
+  alias Gameserver.Tick
   alias Gameserver.UUID
 
-  defstruct [:id, :type, :name, :pos, stats: %Stats{}, cooldowns: %Cooldowns{}]
+  defstruct [:id, :type, :name, :pos, stats: %Stats{}, cooldowns: %Cooldowns{}, ticks: %{}]
 
   @typedoc "Entity type — either a user-controlled player or a server-controlled mob"
   @type entity_type() :: :user | :mob
@@ -24,7 +25,8 @@ defmodule Gameserver.Entity do
           name: String.t(),
           pos: GameMap.coord() | nil,
           stats: Stats.t(),
-          cooldowns: Cooldowns.t()
+          cooldowns: Cooldowns.t(),
+          ticks: %{UUID.t() => Tick.t()}
         }
 
   @typedoc false
@@ -35,6 +37,7 @@ defmodule Gameserver.Entity do
            | {:pos, GameMap.coord()}
            | {:stats, Stats.t()}
            | {:cooldowns, Cooldowns.t()}
+           | {:ticks, %{UUID.t() => Tick.t()}}
 
   @typedoc false
   @typep options() :: [option()]
@@ -60,6 +63,26 @@ defmodule Gameserver.Entity do
   """
   @spec id(t()) :: UUID.t()
   def id(%__MODULE__{id: id}), do: id
+
+  @doc """
+  Adds a tick to this entity's ticks map.
+  """
+  @spec register_tick(t(), Tick.t()) :: t()
+  def register_tick(%__MODULE__{ticks: ticks} = entity, %Tick{id: id} = tick) do
+    %{entity | ticks: Map.put(ticks, id, tick)}
+  end
+
+  @doc """
+  Removes a tick by id and runs its `on_kill` cleanup function.
+  Returns the entity unchanged if the tick id is not found.
+  """
+  @spec remove_tick(t(), UUID.t()) :: t()
+  def remove_tick(%__MODULE__{ticks: ticks} = entity, tick_id) do
+    case Map.pop(ticks, tick_id) do
+      {nil, _ticks} -> entity
+      {%Tick{on_kill: on_kill}, remaining} -> on_kill.(%{entity | ticks: remaining})
+    end
+  end
 
   @doc """
   Adds a bonus to a `BaseStat` field on this entity.
