@@ -20,7 +20,7 @@ defmodule Gameserver.Effects.StatBuff do
   @spec apply(args :: map(), source :: Entity.t(), target :: Entity.t()) ::
           Gameserver.Effect.transform()
   def apply(%{stat: stat, amount: amount, effect_name: effect_name}, _source, _target) do
-    effect_ref = %Effect{name: effect_name}
+    effect_ref = Effect.new(effect_name)
 
     fn %Entity{} = entity ->
       Entity.add_stat_bonus(entity, stat, amount, effect_ref)

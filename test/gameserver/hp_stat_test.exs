@@ -23,14 +23,14 @@ defmodule Gameserver.HpStatTest do
     end
 
     test "temp hp bonus adds to effective value" do
-      effect = %Effect{name: "temp hp"}
+      effect = Effect.new("temp hp")
       inner = BaseStat.add_bonus(%BaseStat{base: 20}, 5, effect)
       stats = Stats.new(hp: %HpStat{base_stat: inner}, max_hp: @default_max)
       assert Stat.effective(stats.hp, stats) == 25
     end
 
     test "temp hp bonus still clamps to max hp" do
-      effect = %Effect{name: "temp hp"}
+      effect = Effect.new("temp hp")
       inner = BaseStat.add_bonus(%BaseStat{base: 28}, 10, effect)
       stats = Stats.new(hp: %HpStat{base_stat: inner}, max_hp: @default_max)
       assert Stat.effective(stats.hp, stats) == 30

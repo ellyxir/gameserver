@@ -57,7 +57,8 @@ defmodule Gameserver.Effects.StatBuffTest do
         StatBuff.apply(%{stat: :str, amount: 3, effect_name: "Battle Shout"}, source, target)
 
       updated = transform.(target)
-      cleaned = Entity.remove_stat_bonus(updated, :str, %Effect{name: "Battle Shout"})
+      [{3, effect_ref}] = updated.stats.str.bonuses
+      cleaned = Entity.remove_stat_bonus(updated, :str, effect_ref)
       assert Stat.effective(cleaned.stats.str, cleaned.stats) == 10
     end
 

@@ -25,8 +25,8 @@ defmodule Gameserver.BaseStat do
   end
 
   @spec remove_bonus(t(), Effect.t()) :: t()
-  def remove_bonus(%__MODULE__{bonuses: bonuses} = base_stat, %Effect{} = effect) do
-    bonuses = Enum.reject(bonuses, fn {_amt, e} -> e == effect end)
+  def remove_bonus(%__MODULE__{bonuses: bonuses} = base_stat, %Effect{id: id}) do
+    bonuses = Enum.reject(bonuses, fn {_amt, e} -> e.id == id end)
     %{base_stat | bonuses: bonuses}
   end
 end

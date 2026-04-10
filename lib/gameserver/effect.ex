@@ -13,14 +13,24 @@ defmodule Gameserver.Effect do
   """
 
   alias Gameserver.Entity
+  alias Gameserver.UUID
 
-  @enforce_keys [:name]
-  defstruct [:name]
+  @enforce_keys [:id, :name]
+  defstruct [:id, :name]
 
-  @typedoc "A named effect reference used in `BaseStat` module to track where stat bonuses came from."
+  @typedoc "An effect reference used in `BaseStat` to track where stat bonuses came from."
   @type t() :: %__MODULE__{
+          id: UUID.t(),
           name: String.t()
         }
+
+  @doc """
+  Creates a new effect reference with a unique id.
+  """
+  @spec new(name :: String.t()) :: t()
+  def new(name) when is_binary(name) do
+    %__MODULE__{id: UUID.generate(), name: name}
+  end
 
   @typedoc "Transform function returned by an effect that mutates a target entity."
   @type transform() :: (Entity.t() -> Entity.t())

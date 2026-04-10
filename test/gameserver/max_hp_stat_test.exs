@@ -2,6 +2,7 @@ defmodule Gameserver.MaxHpStatTest do
   use ExUnit.Case, async: true
 
   alias Gameserver.BaseStat
+  alias Gameserver.Effect
   alias Gameserver.MaxHpStat
   alias Gameserver.Stat
   alias Gameserver.Stats
@@ -14,7 +15,7 @@ defmodule Gameserver.MaxHpStatTest do
     end
 
     test "includes bonuses from inner base stat" do
-      effect = %Gameserver.Effect{name: "fortitude"}
+      effect = Effect.new("fortitude")
       inner = BaseStat.add_bonus(%BaseStat{}, 20, effect)
       stats = Stats.new(max_hp: %MaxHpStat{base_stat: inner}, con: %BaseStat{base: 10})
       # 10 + 10*2 (from con) + 20 (bonus)
@@ -22,7 +23,7 @@ defmodule Gameserver.MaxHpStatTest do
     end
 
     test "con bonuses flow through to max hp" do
-      effect = %Gameserver.Effect{name: "con buff"}
+      effect = Effect.new("con buff")
       con = BaseStat.add_bonus(%BaseStat{base: 10}, 4, effect)
       stats = Stats.new(max_hp: %MaxHpStat{}, con: con)
       # 10 + (10+4)*2
