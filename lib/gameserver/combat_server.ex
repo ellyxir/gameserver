@@ -16,7 +16,6 @@ defmodule Gameserver.CombatServer do
   alias Gameserver.Effect
   alias Gameserver.Entity
   alias Gameserver.EntityServer
-  alias Gameserver.HpStat
   alias Gameserver.Stat
   alias Gameserver.UUID
   alias Gameserver.WorldServer
@@ -84,8 +83,8 @@ defmodule Gameserver.CombatServer do
          :ok <- check_adjacent(attacker, defender, ability.range) do
       defender_hp_before = Stat.effective(defender.stats.hp, defender.stats)
 
-      intents = execute_ability(ability, attacker, defender)
-      update_fn = build_entity_update_fn(intents)
+      transforms = execute_ability(ability, attacker, defender)
+      update_fn = build_entity_update_fn(transforms)
 
       {:ok, defender} =
         EntityServer.update_entity(
@@ -105,28 +104,25 @@ defmodule Gameserver.CombatServer do
   end
 
   @doc """
-  Executes an ability's effects against a target, returning a list of intents.
+  Executes an ability's effects against a target, returning a list of transforms.
 
   Iterates the ability's effect list, calling `valid?/3` then `apply/3` on each.
   Effects that fail validation are skipped.
   """
   @spec execute_ability(Ability.t(), source :: Entity.t(), target :: Entity.t()) ::
-          [Effect.intent()]
+          [Effect.transform()]
   def execute_ability(%Ability{effects: effects}, %Entity{} = source, %Entity{} = target) do
     effects
     |> Enum.filter(fn {module, args} -> module.valid?(args, source, target) end)
     |> Enum.map(fn {module, args} -> module.apply(args, source, target) end)
   end
 
-  @spec build_entity_update_fn([Effect.intent()]) :: EntityServer.entity_transform_function()
-  defp build_entity_update_fn(intents) do
+  @spec build_entity_update_fn([Effect.transform()]) :: EntityServer.entity_transform_function()
+  defp build_entity_update_fn(transforms) do
     fn entity ->
-      # when we add more intents, we'll have to update this pattern match
-      Enum.reduce(intents, entity, fn {:damage, amount}, e ->
-        hp = HpStat.apply_damage(e.stats.hp, amount)
-        is_dead = e.stats.dead || Stat.effective(hp, e.stats) <= 0
-        %{e | stats: %{e.stats | hp: hp, dead: is_dead}}
-      end)
+      entity = Enum.reduce(transforms, entity, fn transform, acc -> transform.(acc) end)
+      dead = entity.stats.dead || Stat.effective(entity.stats.hp, entity.stats) <= 0
+      %{entity | stats: %{entity.stats | dead: dead}}
     end
   end
 

@@ -3,6 +3,7 @@ defmodule Gameserver.Effects.DirectDmgTest do
 
   alias Gameserver.Effects.DirectDmg
   alias Gameserver.Entity
+  alias Gameserver.Stat
   alias Gameserver.Stats
 
   defp make_entity(opts \\ []) do
@@ -25,34 +26,44 @@ defmodule Gameserver.Effects.DirectDmgTest do
   end
 
   describe "apply/3" do
-    test "returns damage intent with full base damage when target has no defense" do
+    test "returns a transform that applies full base damage when target has no defense" do
       source = make_entity()
       target = make_entity()
-      assert {:damage, 10} = DirectDmg.apply(%{base: 10}, source, target)
+      transform = DirectDmg.apply(%{base: 10}, source, target)
+      updated = transform.(target)
+      assert Stat.effective(updated.stats.hp, updated.stats) == 0
     end
 
-    test "subtracts target defense from base damage" do
+    test "returns a transform that subtracts target defense from base damage" do
       source = make_entity()
       target = make_entity(stats: [defense: 3])
-      assert {:damage, 7} = DirectDmg.apply(%{base: 10}, source, target)
+      transform = DirectDmg.apply(%{base: 10}, source, target)
+      updated = transform.(target)
+      assert Stat.effective(updated.stats.hp, updated.stats) == 3
     end
 
-    test "floors damage at zero when defense exceeds base" do
+    test "returns a transform that floors damage at zero when defense exceeds base" do
       source = make_entity()
       target = make_entity(stats: [defense: 50])
-      assert {:damage, 0} = DirectDmg.apply(%{base: 10}, source, target)
+      transform = DirectDmg.apply(%{base: 10}, source, target)
+      updated = transform.(target)
+      assert Stat.effective(updated.stats.hp, updated.stats) == 10
     end
 
-    test "returns zero damage when defense equals base" do
+    test "returns a transform that does zero damage when defense equals base" do
       source = make_entity()
       target = make_entity(stats: [defense: 10])
-      assert {:damage, 0} = DirectDmg.apply(%{base: 10}, source, target)
+      transform = DirectDmg.apply(%{base: 10}, source, target)
+      updated = transform.(target)
+      assert Stat.effective(updated.stats.hp, updated.stats) == 10
     end
 
-    test "returns zero damage with zero base" do
+    test "returns a transform that does zero damage with zero base" do
       source = make_entity()
       target = make_entity()
-      assert {:damage, 0} = DirectDmg.apply(%{base: 0}, source, target)
+      transform = DirectDmg.apply(%{base: 0}, source, target)
+      updated = transform.(target)
+      assert Stat.effective(updated.stats.hp, updated.stats) == 10
     end
   end
 end
