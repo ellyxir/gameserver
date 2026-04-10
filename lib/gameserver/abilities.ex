@@ -41,7 +41,7 @@ defmodule Gameserver.Abilities do
        tags: [:physical, :buff],
        range: 0,
        cooldown_ms: 5000,
-       effects: [{StatBuff, %{stat: :str, amount: 3, effect_name: "Battle Shout"}}]
+       effects: [{StatBuff, %{stat: :str, amount: 3}}]
      }}
   end
 
@@ -53,7 +53,7 @@ defmodule Gameserver.Abilities do
        tags: [:physical, :buff],
        range: 0,
        cooldown_ms: 5000,
-       effects: [{StatBuff, %{stat: :con, amount: 2, effect_name: "Fortify"}}]
+       effects: [{StatBuff, %{stat: :con, amount: 2}}]
      }}
   end
 

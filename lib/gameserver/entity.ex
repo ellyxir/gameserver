@@ -8,7 +8,6 @@ defmodule Gameserver.Entity do
 
   alias Gameserver.BaseStat
   alias Gameserver.Cooldowns
-  alias Gameserver.Effect
   alias Gameserver.Map, as: GameMap
   alias Gameserver.Stats
   alias Gameserver.UUID
@@ -64,21 +63,22 @@ defmodule Gameserver.Entity do
 
   @doc """
   Adds a bonus to a `BaseStat` field on this entity.
+  Returns the updated entity and the generated bonus id.
   """
-  @spec add_stat_bonus(t(), atom(), integer(), Effect.t()) :: t()
-  def add_stat_bonus(%__MODULE__{} = entity, stat, amount, %Effect{} = effect) do
+  @spec add_stat_bonus(t(), atom(), integer()) :: {t(), effect_id :: UUID.t()}
+  def add_stat_bonus(%__MODULE__{} = entity, stat, amount) do
     current_stat = Map.fetch!(entity.stats, stat)
-    updated_stat = BaseStat.add_bonus(current_stat, amount, effect)
-    %{entity | stats: Map.put(entity.stats, stat, updated_stat)}
+    {updated_stat, id} = BaseStat.add_bonus(current_stat, amount)
+    {%{entity | stats: Map.put(entity.stats, stat, updated_stat)}, id}
   end
 
   @doc """
-  Removes a bonus from a `BaseStat` field on this entity.
+  Removes a bonus from a `BaseStat` field on this entity by bonus id.
   """
-  @spec remove_stat_bonus(t(), atom(), Effect.t()) :: t()
-  def remove_stat_bonus(%__MODULE__{} = entity, stat, %Effect{} = effect) do
+  @spec remove_stat_bonus(t(), atom(), effect_id :: UUID.t()) :: t()
+  def remove_stat_bonus(%__MODULE__{} = entity, stat, id) when is_binary(id) do
     current_stat = Map.fetch!(entity.stats, stat)
-    updated_stat = BaseStat.remove_bonus(current_stat, effect)
+    updated_stat = BaseStat.remove_bonus(current_stat, id)
     %{entity | stats: Map.put(entity.stats, stat, updated_stat)}
   end
 end

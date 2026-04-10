@@ -8,25 +8,33 @@ defmodule Gameserver.BaseStat do
   max_hp) use separate modules that compute their base from other stats.
   """
 
-  alias Gameserver.Effect
+  alias Gameserver.UUID
 
   defstruct base: 0, bonuses: []
 
-  @typedoc "A base stat with an integer value and a list of effect-linked bonuses."
+  @typep bonus() :: {amount :: integer(), effect_id :: UUID.t()}
+
+  @typedoc "A base stat with an integer value and a list of bonuses."
   @type t() :: %__MODULE__{
           base: integer(),
-          bonuses: [{integer(), Effect.t()}]
+          bonuses: [bonus()]
         }
 
-  @spec add_bonus(t(), integer(), Effect.t()) :: t()
-  def add_bonus(%__MODULE__{bonuses: bonuses} = base_stat, amt, %Effect{} = effect) do
-    bonuses = [{amt, effect} | bonuses]
-    %{base_stat | bonuses: bonuses}
+  @doc """
+  Adds a bonus to the stat and returns the updated stat with the generated id.
+  """
+  @spec add_bonus(t(), amount :: integer()) :: {t(), effect_id :: UUID.t()}
+  def add_bonus(%__MODULE__{bonuses: bonuses} = base_stat, amt) do
+    id = UUID.generate()
+    {%{base_stat | bonuses: [{amt, id} | bonuses]}, id}
   end
 
-  @spec remove_bonus(t(), Effect.t()) :: t()
-  def remove_bonus(%__MODULE__{bonuses: bonuses} = base_stat, %Effect{id: id}) do
-    bonuses = Enum.reject(bonuses, fn {_amt, e} -> e.id == id end)
+  @doc """
+  Removes all bonuses with the given id.
+  """
+  @spec remove_bonus(t(), effect_id :: UUID.t()) :: t()
+  def remove_bonus(%__MODULE__{bonuses: bonuses} = base_stat, id) when is_binary(id) do
+    bonuses = Enum.reject(bonuses, fn {_amt, bonus_id} -> bonus_id == id end)
     %{base_stat | bonuses: bonuses}
   end
 end
@@ -36,6 +44,6 @@ defimpl Gameserver.Stat, for: Gameserver.BaseStat do
         %Gameserver.BaseStat{base: base, bonuses: bonuses} = _stat,
         %Gameserver.Stats{} = _stats
       ) do
-    Enum.reduce(bonuses, base, fn {bonus, _effect}, acc -> bonus + acc end)
+    Enum.reduce(bonuses, base, fn {bonus, _effect_id}, acc -> bonus + acc end)
   end
 end
