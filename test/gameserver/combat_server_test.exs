@@ -105,6 +105,27 @@ defmodule Gameserver.CombatServerTest do
     end
   end
 
+  describe "execute_ability/3 with buff abilities" do
+    test "returns a transform for a buff ability against alive target" do
+      {:ok, ability} = Gameserver.Abilities.get(:battle_shout)
+      source = Entity.new(name: "alice", type: :user)
+      target = Entity.new(name: "alice", type: :user)
+
+      assert [transform] = CombatServer.execute_ability(ability, source, target)
+      assert is_function(transform, 1)
+      updated = transform.(target)
+      assert Stat.effective(updated.stats.str, updated.stats) == 13
+    end
+
+    test "returns empty list for buff ability when target is dead" do
+      {:ok, ability} = Gameserver.Abilities.get(:battle_shout)
+      source = Entity.new(name: "alice", type: :user)
+      target = Entity.new(name: "alice", type: :user, stats: Gameserver.Stats.new(dead: true))
+
+      assert [] = CombatServer.execute_ability(ability, source, target)
+    end
+  end
+
   describe "attack/3" do
     test "adjacent attack applies damage and returns cooldown", ctx do
       {:ok, user} = User.new("alice")

@@ -6,7 +6,9 @@ defmodule Gameserver.Entity do
   The `:type` field distinguishes players (`:user`) from mobs (`:mob`).
   """
 
+  alias Gameserver.BaseStat
   alias Gameserver.Cooldowns
+  alias Gameserver.Effect
   alias Gameserver.Map, as: GameMap
   alias Gameserver.Stats
   alias Gameserver.UUID
@@ -59,4 +61,24 @@ defmodule Gameserver.Entity do
   """
   @spec id(t()) :: UUID.t()
   def id(%__MODULE__{id: id}), do: id
+
+  @doc """
+  Adds a bonus to a `BaseStat` field on this entity.
+  """
+  @spec add_stat_bonus(t(), atom(), integer(), Effect.t()) :: t()
+  def add_stat_bonus(%__MODULE__{} = entity, stat, amount, %Effect{} = effect) do
+    current_stat = Map.fetch!(entity.stats, stat)
+    updated_stat = BaseStat.add_bonus(current_stat, amount, effect)
+    %{entity | stats: Map.put(entity.stats, stat, updated_stat)}
+  end
+
+  @doc """
+  Removes a bonus from a `BaseStat` field on this entity.
+  """
+  @spec remove_stat_bonus(t(), atom(), Effect.t()) :: t()
+  def remove_stat_bonus(%__MODULE__{} = entity, stat, %Effect{} = effect) do
+    current_stat = Map.fetch!(entity.stats, stat)
+    updated_stat = BaseStat.remove_bonus(current_stat, effect)
+    %{entity | stats: Map.put(entity.stats, stat, updated_stat)}
+  end
 end
