@@ -117,7 +117,7 @@ defmodule Gameserver.CombatServer do
     |> Enum.map(fn {module, args} -> module.apply(args, source, target) end)
   end
 
-  @spec build_entity_update_fn([Effect.transform()]) :: EntityServer.entity_transform_function()
+  @spec build_entity_update_fn([Effect.transform()]) :: Effect.transform()
   defp build_entity_update_fn(transforms) do
     fn entity ->
       entity = Enum.reduce(transforms, entity, fn transform, acc -> transform.(acc) end)
