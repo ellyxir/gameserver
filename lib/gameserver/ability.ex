@@ -11,11 +11,14 @@ defmodule Gameserver.Ability do
 
   @typep effect_entry() :: {module(), map()}
 
+  @type tag() ::
+          :physical | :melee | :buff | :debuff | :fire | :magic | :dot | :item | :consumable
+
   @typedoc "An ability definition"
   @type t() :: %__MODULE__{
           id: atom(),
           name: String.t(),
-          tags: [atom()],
+          tags: [tag()],
           range: pos_integer(),
           cooldown_ms: pos_integer(),
           effects: [effect_entry()]
