@@ -75,6 +75,7 @@ defmodule Gameserver.MobTest do
         id: mob_id,
         name: "goblin",
         spawn_pos: {px + 1, py},
+        abilities: [:melee_strike],
         world_server: ctx.world_server,
         combat_server: ctx.combat_server
       }
@@ -185,6 +186,7 @@ defmodule Gameserver.MobTest do
         id: mob_id,
         name: "goblin",
         spawn_pos: {px + 1, py},
+        abilities: [:melee_strike],
         world_server: ctx.world_server,
         combat_server: ctx.combat_server
       }

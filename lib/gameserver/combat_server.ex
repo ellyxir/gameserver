@@ -58,7 +58,7 @@ defmodule Gameserver.CombatServer do
   Returns `{:ok, {:attack, cooldown_ms}}` on success.
   """
   @spec attack(attacker :: UUID.t(), defender :: UUID.t(), ability :: atom(), GenServer.server()) ::
-          {:ok, Cooldowns.cooldown()} | {:error, :not_found | :out_of_range}
+          {:ok, Cooldowns.cooldown()} | {:error, :not_found | :out_of_range | :missing_ability}
   def attack(attacker_id, defender_id, ability_id, server \\ __MODULE__)
       when is_atom(ability_id) do
     GenServer.call(server, {:attack, attacker_id, defender_id, ability_id})
@@ -84,6 +84,7 @@ defmodule Gameserver.CombatServer do
          {:ok, defender} <- EntityServer.get_entity(defender_id, entity_server),
          :ok <- check_alive(defender),
          {:ok, ability} <- Abilities.get(ability_id),
+         {:has_ability, true} <- {:has_ability, ability_id in attacker.abilities},
          :ok <- check_adjacent(attacker, defender, ability.range) do
       defender_hp_before = Stat.effective(defender.stats.hp, defender.stats)
 
@@ -104,6 +105,7 @@ defmodule Gameserver.CombatServer do
       {:reply, {:ok, {:attack, ability.cooldown_ms}}, state}
     else
       {:error, reason} -> {:reply, {:error, reason}, state}
+      {:has_ability, false} -> {:reply, {:error, :missing_ability}, state}
     end
   end
 
