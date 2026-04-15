@@ -40,6 +40,7 @@ defmodule Gameserver.TickServerTest do
             hp = HpStat.apply_damage(e.stats.hp, 1)
             {%{e | stats: %{e.stats | hp: hp}}, :continue}
           end,
+          source_id: entity.id,
           repeat_ms: 50
         )
 
@@ -63,6 +64,7 @@ defmodule Gameserver.TickServerTest do
       tick =
         Tick.new(
           transform: fn e -> {e, :stop} end,
+          source_id: entity.id,
           repeat_ms: 50
         )
 
@@ -85,6 +87,7 @@ defmodule Gameserver.TickServerTest do
       tick =
         Tick.new(
           transform: fn e -> {e, :continue} end,
+          source_id: entity.id,
           repeat_ms: 50,
           kill_after_ms: 100
         )
@@ -109,6 +112,7 @@ defmodule Gameserver.TickServerTest do
         Tick.new(
           transform: fn e -> {e, :continue} end,
           on_kill: fn e -> %{e | stats: %{e.stats | defense: 99}} end,
+          source_id: entity.id,
           repeat_ms: 50,
           kill_after_ms: 100
         )

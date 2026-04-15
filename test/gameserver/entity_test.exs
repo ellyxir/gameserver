@@ -48,7 +48,10 @@ defmodule Gameserver.EntityTest do
   describe "register_tick/2" do
     test "adds a tick to the entity's ticks map" do
       entity = Entity.new(name: "test", type: :mob, pos: {0, 0})
-      tick = Tick.new(transform: fn e -> {e, :continue} end, repeat_ms: 3000)
+
+      tick =
+        Tick.new(transform: fn e -> {e, :continue} end, source_id: entity.id, repeat_ms: 3000)
+
       updated = Entity.register_tick(entity, tick)
       assert Map.has_key?(updated.ticks, tick.id)
       assert updated.ticks[tick.id] == tick
@@ -63,7 +66,14 @@ defmodule Gameserver.EntityTest do
         %{e | stats: %{e.stats | defense: 99}}
       end
 
-      tick = Tick.new(transform: fn e -> {e, :continue} end, repeat_ms: 3000, on_kill: on_kill)
+      tick =
+        Tick.new(
+          transform: fn e -> {e, :continue} end,
+          source_id: entity.id,
+          repeat_ms: 3000,
+          on_kill: on_kill
+        )
+
       entity = Entity.register_tick(entity, tick)
       updated = Entity.remove_tick(entity, tick.id)
       assert updated.ticks == %{}

@@ -6,6 +6,8 @@ defmodule Gameserver.Tick do
   Each tick self-schedules via `Process.send_after` in whatever process owns
   the entity — there is no central tick loop.
 
+  The `source_id` is the entity that created the tick.
+
   The `transform` function runs each tick interval and signals whether to
   continue or self-remove. The `on_kill` function runs cleanup when the
   tick is removed for any reason (stop signal, expiry, or external removal).
@@ -29,11 +31,13 @@ defmodule Gameserver.Tick do
   """
   @type on_kill() :: (Entity.t() -> Entity.t())
 
-  defstruct [:id, :transform, :on_kill, :repeat_ms, :kill_after_ms]
+  @enforce_keys [:id, :source_id, :transform, :repeat_ms]
+  defstruct [:id, :source_id, :transform, :on_kill, :repeat_ms, :kill_after_ms]
 
   @typedoc "A periodic tick attached to an entity"
   @type t() :: %__MODULE__{
           id: UUID.t(),
+          source_id: UUID.t(),
           transform: transform(),
           on_kill: on_kill(),
           repeat_ms: pos_integer(),
@@ -41,7 +45,8 @@ defmodule Gameserver.Tick do
         }
 
   @typep option() ::
-           {:transform, transform()}
+           {:source_id, UUID.t()}
+           | {:transform, transform()}
            | {:on_kill, on_kill()}
            | {:repeat_ms, pos_integer()}
            | {:kill_after_ms, pos_integer() | nil}
@@ -51,7 +56,7 @@ defmodule Gameserver.Tick do
   @doc """
   Creates a new tick with a generated UUID.
 
-  Required options: `:transform`, `:repeat_ms`.
+  Required options: `:source_id`, `:transform`, `:repeat_ms`.
   Optional: `:on_kill` (defaults to identity), `:kill_after_ms` (defaults to nil).
   """
   @spec new(options()) :: t()

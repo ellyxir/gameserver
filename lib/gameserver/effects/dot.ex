@@ -7,7 +7,7 @@ defmodule Gameserver.Effects.DoT do
   Damage is applied raw — no defense reduction. Combat formula
   integration is a future issue.
 
-  Args: `:base` (damage per tick), `:repeat_ms` (tick interval),
+  Args: `:base` (damage per tick), `:source_id` (source of the DoT) `:repeat_ms` (tick interval),
   `:kill_after_ms` (total duration, nil for permanent).
   """
 
@@ -23,13 +23,14 @@ defmodule Gameserver.Effects.DoT do
 
   @spec apply(args :: map(), source :: Entity.t(), target :: Entity.t()) ::
           Gameserver.Effect.transform()
-  def apply(%{base: base, repeat_ms: repeat_ms} = args, _source, _target) do
+  def apply(%{base: base, repeat_ms: repeat_ms} = args, %Entity{id: source_id}, _target) do
     tick =
       Tick.new(
         transform: fn entity ->
           hp = HpStat.apply_damage(entity.stats.hp, base)
           {%{entity | stats: %{entity.stats | hp: hp}}, :continue}
         end,
+        source_id: source_id,
         repeat_ms: repeat_ms,
         kill_after_ms: Map.get(args, :kill_after_ms)
       )
