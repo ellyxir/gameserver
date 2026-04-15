@@ -20,6 +20,7 @@ defmodule Gameserver.Application do
       {Registry, keys: :unique, name: Gameserver.ProcessRegistry},
       Gameserver.MobServer,
       Gameserver.CombatServer,
+      Gameserver.TickServer,
       # Start to serve requests, typically the last entry
       GameserverWeb.Endpoint
     ]

@@ -91,7 +91,11 @@ defmodule Gameserver.TickServer do
   end
 
   def handle_info({:entity_created, _entity}, state), do: {:noreply, state}
-  def handle_info({:entity_removed, _id}, state), do: {:noreply, state}
+
+  def handle_info({:entity_removed, id}, state) do
+    remaining = Map.reject(state.tick_owners, fn {_tick_id, entity_id} -> entity_id == id end)
+    {:noreply, %{state | tick_owners: remaining}}
+  end
 
   @spec execute_tick(tick :: UUID.t(), entity_id :: UUID.t(), repeat_ms :: pos_integer(), t()) ::
           {:noreply, t()}

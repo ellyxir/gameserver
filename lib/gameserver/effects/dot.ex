@@ -7,8 +7,9 @@ defmodule Gameserver.Effects.DoT do
   Damage is applied raw — no defense reduction. Combat formula
   integration is a future issue.
 
-  Args: `:base` (damage per tick), `:source_id` (source of the DoT) `:repeat_ms` (tick interval),
+  Args: `:base` (damage per tick), `:repeat_ms` (tick interval),
   `:kill_after_ms` (total duration, nil for permanent).
+  The source entity's id is captured as the tick's `source_id`.
   """
 
   @behaviour Gameserver.Effect

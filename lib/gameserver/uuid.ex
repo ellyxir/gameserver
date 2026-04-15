@@ -13,5 +13,6 @@ defmodule Gameserver.UUID do
   @spec generate() :: t()
   def generate, do: Ecto.UUID.generate()
 
-  defguard is_uuid(uuid) when is_binary(uuid)
+  @doc "Guard that checks if a value looks like a UUID (binary, 36 bytes)."
+  defguard is_uuid(uuid) when is_binary(uuid) and byte_size(uuid) == 36
 end

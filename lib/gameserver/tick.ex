@@ -3,8 +3,8 @@ defmodule Gameserver.Tick do
   A self-contained unit of periodic work attached to an entity.
 
   Ticks drive persistent effects like damage over time and temporary buffs.
-  Each tick self-schedules via `Process.send_after` in whatever process owns
-  the entity — there is no central tick loop.
+  `TickServer` subscribes to entity changes and schedules tick execution
+  via `Process.send_after` for all entities automatically.
 
   The `source_id` is the entity that created the tick.
 

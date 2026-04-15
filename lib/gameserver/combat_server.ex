@@ -128,6 +128,11 @@ defmodule Gameserver.CombatServer do
     end
   end
 
+  @doc """
+  Broadcasts a combat event on the combat PubSub topic.
+  Runs in the caller's process, does not go through the CombatServer GenServer.
+  Accepts either an Entity or a UUID for the attacker.
+  """
   @spec broadcast_combat_event(
           attacker :: Entity.t() | UUID.t(),
           defender :: Entity.t(),
