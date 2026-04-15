@@ -3,6 +3,7 @@ defmodule Gameserver.EntityTest do
 
   alias Gameserver.Entity
   alias Gameserver.Stats
+  alias Gameserver.Tick
   alias Gameserver.UUID
 
   describe "new/1" do
@@ -34,6 +35,72 @@ defmodule Gameserver.EntityTest do
       id = UUID.generate()
       entity = Entity.new(id: id, name: "bob", type: :user, pos: {0, 0})
       assert entity.id == id
+    end
+  end
+
+  describe "new/1 ticks" do
+    test "defaults to an empty ticks map" do
+      entity = Entity.new(name: "alice", type: :user, pos: {0, 0})
+      assert entity.ticks == %{}
+    end
+  end
+
+  describe "register_tick/2" do
+    test "adds a tick to the entity's ticks map" do
+      entity = Entity.new(name: "test", type: :mob, pos: {0, 0})
+
+      tick =
+        Tick.new(transform: fn e -> {e, :continue} end, source_id: entity.id, repeat_ms: 3000)
+
+      updated = Entity.register_tick(entity, tick)
+      assert Map.has_key?(updated.ticks, tick.id)
+      assert updated.ticks[tick.id] == tick
+    end
+  end
+
+  describe "remove_tick/2" do
+    test "removes a tick by id and runs on_kill" do
+      entity = Entity.new(name: "test", type: :mob, pos: {0, 0})
+
+      on_kill = fn e ->
+        %{e | stats: %{e.stats | defense: 99}}
+      end
+
+      tick =
+        Tick.new(
+          transform: fn e -> {e, :continue} end,
+          source_id: entity.id,
+          repeat_ms: 3000,
+          on_kill: on_kill
+        )
+
+      entity = Entity.register_tick(entity, tick)
+      updated = Entity.remove_tick(entity, tick.id)
+      assert updated.ticks == %{}
+      assert updated.stats.defense == 99
+    end
+
+    test "returns entity unchanged when tick id not found" do
+      entity = Entity.new(name: "test", type: :mob, pos: {0, 0})
+      updated = Entity.remove_tick(entity, UUID.generate())
+      assert updated == entity
+    end
+  end
+
+  describe "get_tick/2" do
+    test "returns the tick when it exists" do
+      entity = Entity.new(name: "test", type: :mob, pos: {0, 0})
+
+      tick =
+        Tick.new(transform: fn e -> {e, :continue} end, source_id: entity.id, repeat_ms: 3000)
+
+      entity = Entity.register_tick(entity, tick)
+      assert {:ok, ^tick} = Entity.get_tick(entity, tick.id)
+    end
+
+    test "returns :error when tick id not found" do
+      entity = Entity.new(name: "test", type: :mob, pos: {0, 0})
+      assert :error = Entity.get_tick(entity, UUID.generate())
     end
   end
 

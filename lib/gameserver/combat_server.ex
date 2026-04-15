@@ -9,6 +9,8 @@ defmodule Gameserver.CombatServer do
 
   use GenServer
 
+  import Gameserver.UUID, only: [is_uuid: 1]
+
   alias Gameserver.Abilities
   alias Gameserver.Ability
   alias Gameserver.CombatEvent
@@ -117,7 +119,7 @@ defmodule Gameserver.CombatServer do
     |> Enum.map(fn {module, args} -> module.apply(args, source, target) end)
   end
 
-  @spec build_entity_update_fn([Effect.transform()]) :: EntityServer.entity_transform_function()
+  @spec build_entity_update_fn([Effect.transform()]) :: Effect.transform()
   defp build_entity_update_fn(transforms) do
     fn entity ->
       entity = Enum.reduce(transforms, entity, fn transform, acc -> transform.(acc) end)
@@ -126,12 +128,26 @@ defmodule Gameserver.CombatServer do
     end
   end
 
-  @spec broadcast_combat_event(Entity.t(), Entity.t(), non_neg_integer(), non_neg_integer()) ::
-          :ok
-  defp broadcast_combat_event(%Entity{} = attacker, %Entity{} = defender, damage, defender_hp)
-       when is_integer(damage) and is_integer(defender_hp) do
+  @doc """
+  Broadcasts a combat event on the combat PubSub topic.
+  Runs in the caller's process, does not go through the CombatServer GenServer.
+  Accepts either an Entity or a UUID for the attacker.
+  """
+  @spec broadcast_combat_event(
+          attacker :: Entity.t() | UUID.t(),
+          defender :: Entity.t(),
+          dmg :: non_neg_integer(),
+          defender_hp :: non_neg_integer()
+        ) :: :ok
+  def broadcast_combat_event(%Entity{} = attacker, %Entity{} = defender, damage, defender_hp)
+      when is_integer(damage) and is_integer(defender_hp) do
+    broadcast_combat_event(attacker.id, defender, damage, defender_hp)
+  end
+
+  def broadcast_combat_event(attacker_id, %Entity{} = defender, damage, defender_hp)
+      when is_uuid(attacker_id) and is_integer(damage) and is_integer(defender_hp) do
     event = %CombatEvent{
-      attacker_id: attacker.id,
+      attacker_id: attacker_id,
       defender_id: defender.id,
       damage: damage,
       defender_hp: defender_hp,

@@ -5,6 +5,7 @@ defmodule Gameserver.Abilities do
 
   alias Gameserver.Ability
   alias Gameserver.Effects.DirectDmg
+  alias Gameserver.Effects.DoT
   alias Gameserver.Effects.StatBuff
 
   @doc "Returns the ability with the given id, or `{:error, :not_found}`."
@@ -18,6 +19,21 @@ defmodule Gameserver.Abilities do
        range: 1,
        cooldown_ms: 1000,
        effects: [{DirectDmg, %{base: 1}}]
+     }}
+  end
+
+  def get(:poison_strike) do
+    {:ok,
+     %Ability{
+       id: :poison_strike,
+       name: "Poison Strike",
+       tags: [:physical, :melee, :dot],
+       range: 1,
+       cooldown_ms: 1000,
+       effects: [
+         {DoT, %{base: 1, repeat_ms: 2000, kill_after_ms: 10_000}},
+         {DirectDmg, %{base: 1}}
+       ]
      }}
   end
 
