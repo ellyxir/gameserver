@@ -126,8 +126,12 @@ defmodule Gameserver.CombatServer do
     end
   end
 
-  @spec broadcast_combat_event(Entity.t(), Entity.t(), non_neg_integer(), non_neg_integer()) ::
-          :ok
+  @spec broadcast_combat_event(
+          attacker :: Entity.t(),
+          defender :: Entity.t(),
+          dmg :: non_neg_integer(),
+          defender_hp :: non_neg_integer()
+        ) :: :ok
   defp broadcast_combat_event(%Entity{} = attacker, %Entity{} = defender, damage, defender_hp)
        when is_integer(damage) and is_integer(defender_hp) do
     event = %CombatEvent{
