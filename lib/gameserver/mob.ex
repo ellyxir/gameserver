@@ -7,6 +7,7 @@ defmodule Gameserver.Mob do
 
   alias Gameserver.CombatEvent
   alias Gameserver.CombatServer
+  alias Gameserver.Entity
   alias Gameserver.Map, as: GameMap
   alias Gameserver.UUID
   alias Gameserver.WorldServer
@@ -18,6 +19,7 @@ defmodule Gameserver.Mob do
     :spawn_pos,
     :aggro_target,
     :attack_timer,
+    abilities: [],
     combat_server: CombatServer,
     world_server: WorldServer
   ]
@@ -29,6 +31,7 @@ defmodule Gameserver.Mob do
           spawn_pos: GameMap.coord(),
           aggro_target: UUID.t() | nil,
           attack_timer: reference() | nil,
+          abilities: Entity.ability_list(),
           combat_server: GenServer.server(),
           world_server: GenServer.server()
         }

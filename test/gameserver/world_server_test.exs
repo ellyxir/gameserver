@@ -104,6 +104,20 @@ defmodule Gameserver.WorldServerTest do
       assert {:error, :not_found} = EntityServer.get_entity(mob.id, entity_server)
     end
 
+    test "spawned mobs have abilities", %{server: server, entity_server: entity_server} do
+      Phoenix.PubSub.subscribe(Gameserver.PubSub, WorldServer.presence_topic())
+
+      _mob_server =
+        start_supervised!(
+          {Gameserver.MobServer, world_server: server, name: nil},
+          id: :ms_ability_test
+        )
+
+      [mob | _] = await_mob_joins(3)
+      {:ok, entity} = EntityServer.get_entity(mob.id, entity_server)
+      refute entity.abilities == []
+    end
+
     test "mobs respawn after worldserver restart" do
       %{world: world} = trio = start_world_trio(:mob_respawn_test)
 
@@ -142,6 +156,14 @@ defmodule Gameserver.WorldServerTest do
 
       assert {:ok, {x, y}} = WorldServer.join_user(user, server)
       assert is_integer(x) and is_integer(y)
+    end
+
+    test "player entity gets abilities", %{server: server, entity_server: entity_server} do
+      {:ok, user} = User.new("alice")
+      {:ok, _pos} = WorldServer.join_user(user, server)
+
+      {:ok, entity} = EntityServer.get_entity(user.id, entity_server)
+      refute entity.abilities == []
     end
 
     test "returns error when user already joined", %{server: server} do

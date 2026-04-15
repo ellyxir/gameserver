@@ -70,7 +70,14 @@ defmodule Gameserver.WorldServer do
   """
   @spec join_user(User.t(), GenServer.server()) :: {:ok, GameMap.coord()} | {:error, join_error()}
   def join_user(%User{} = user, server \\ __MODULE__) do
-    entity = Entity.new(id: user.id, name: user.username, type: :user)
+    entity =
+      Entity.new(
+        id: user.id,
+        name: user.username,
+        type: :user,
+        abilities: Gameserver.Abilities.player_abilities()
+      )
+
     GenServer.call(server, {:join_entity, entity})
   end
 

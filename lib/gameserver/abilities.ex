@@ -8,6 +8,12 @@ defmodule Gameserver.Abilities do
   alias Gameserver.Effects.DoT
   alias Gameserver.Effects.StatBuff
 
+  @player_abilities [:melee_strike, :poison_strike, :upper_cut, :battle_shout, :fortify]
+
+  @doc "Returns the default ability list for player entities."
+  @spec player_abilities() :: [atom()]
+  def player_abilities, do: @player_abilities
+
   @doc "Returns the ability with the given id, or `{:error, :not_found}`."
   @spec get(atom()) :: {:ok, Ability.t()} | {:error, :not_found}
   def get(:melee_strike) do

@@ -64,7 +64,7 @@ defmodule Gameserver.Entity do
   """
   @spec new(Gameserver.Mob.t() | options()) :: t()
   def new(%Gameserver.Mob{} = mob) do
-    new(id: mob.id, name: mob.name, type: :mob, pos: mob.spawn_pos)
+    new(id: mob.id, name: mob.name, type: :mob, pos: mob.spawn_pos, abilities: mob.abilities)
   end
 
   def new(opts) do

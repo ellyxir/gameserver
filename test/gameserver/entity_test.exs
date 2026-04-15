@@ -32,6 +32,20 @@ defmodule Gameserver.EntityTest do
       assert entity.stats.attack_power == 2
     end
 
+    test "creates entity from mob struct with abilities" do
+      mob = %Gameserver.Mob{
+        id: UUID.generate(),
+        name: "goblin",
+        spawn_pos: {2, 3},
+        abilities: [:melee_strike, :poison_strike]
+      }
+
+      entity = Entity.new(mob)
+      assert entity.abilities == [:melee_strike, :poison_strike]
+      assert entity.name == "goblin"
+      assert entity.type == :mob
+    end
+
     test "raises on unknown keys" do
       assert_raise KeyError, fn ->
         Entity.new(name: "alice", type: :user, pos: {0, 0}, mana: 100)
