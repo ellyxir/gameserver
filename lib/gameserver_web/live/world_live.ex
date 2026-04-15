@@ -102,7 +102,7 @@ defmodule GameserverWeb.WorldLive do
   defp move_player(socket, direction) do
     case WorldServer.move(socket.assigns.user_id, direction) do
       {:error, {:collision, _pos, {:mob, mob_id}}} ->
-        CombatServer.attack(socket.assigns.user_id, mob_id)
+        CombatServer.attack(socket.assigns.user_id, mob_id, :melee_strike)
         {:noreply, socket}
 
       _ ->

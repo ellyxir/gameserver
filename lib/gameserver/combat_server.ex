@@ -57,10 +57,11 @@ defmodule Gameserver.CombatServer do
 
   Returns `{:ok, {:attack, cooldown_ms}}` on success.
   """
-  @spec attack(UUID.t(), UUID.t(), GenServer.server()) ::
+  @spec attack(attacker :: UUID.t(), defender :: UUID.t(), ability :: atom(), GenServer.server()) ::
           {:ok, Cooldowns.cooldown()} | {:error, :not_found | :out_of_range}
-  def attack(attacker_id, defender_id, server \\ __MODULE__) do
-    GenServer.call(server, {:attack, attacker_id, defender_id})
+  def attack(attacker_id, defender_id, ability_id, server \\ __MODULE__)
+      when is_atom(ability_id) do
+    GenServer.call(server, {:attack, attacker_id, defender_id, ability_id})
   end
 
   # Server callbacks
@@ -74,14 +75,15 @@ defmodule Gameserver.CombatServer do
 
   @impl GenServer
   def handle_call(
-        {:attack, attacker_id, defender_id},
+        {:attack, attacker_id, defender_id, ability_id},
         _from,
         %__MODULE__{entity_server: entity_server} = state
-      ) do
+      )
+      when is_atom(ability_id) do
     with {:ok, attacker} <- EntityServer.get_entity(attacker_id, entity_server),
          {:ok, defender} <- EntityServer.get_entity(defender_id, entity_server),
          :ok <- check_alive(defender),
-         {:ok, ability} <- Abilities.get(:melee_strike),
+         {:ok, ability} <- Abilities.get(ability_id),
          :ok <- check_adjacent(attacker, defender, ability.range) do
       defender_hp_before = Stat.effective(defender.stats.hp, defender.stats)
 

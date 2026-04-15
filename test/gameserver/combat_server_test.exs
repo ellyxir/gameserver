@@ -126,7 +126,7 @@ defmodule Gameserver.CombatServerTest do
     end
   end
 
-  describe "attack/3" do
+  describe "attack/4" do
     test "adjacent attack applies damage and returns cooldown", ctx do
       {:ok, user} = User.new("alice")
       {:ok, _pos} = WorldServer.join_user(user, ctx.world_server)
@@ -134,7 +134,7 @@ defmodule Gameserver.CombatServerTest do
       {:ok, _pos} = WorldServer.join_entity(mob, ctx.world_server)
 
       assert {:ok, {:attack, cooldown_ms}} =
-               CombatServer.attack(user.id, mob.id, ctx.combat_server)
+               CombatServer.attack(user.id, mob.id, :melee_strike, ctx.combat_server)
 
       assert is_integer(cooldown_ms) and cooldown_ms > 0
 
@@ -144,12 +144,29 @@ defmodule Gameserver.CombatServerTest do
       assert defender_hp == 9
     end
 
+    test "uses the ability specified by ability_id", ctx do
+      {:ok, user} = User.new("alice")
+      {:ok, _pos} = WorldServer.join_user(user, ctx.world_server)
+      mob = Entity.new(name: "goblin", type: :mob, pos: spawn_adjacent_pos(ctx.world_server))
+      {:ok, _pos} = WorldServer.join_entity(mob, ctx.world_server)
+
+      # upper_cut has base damage 3, vs melee_strike's 1
+      {:ok, {:attack, cooldown_ms}} =
+        CombatServer.attack(user.id, mob.id, :upper_cut, ctx.combat_server)
+
+      assert cooldown_ms == 1500
+
+      {:ok, defender} = EntityServer.get_entity(mob.id, ctx.entity_server)
+      assert Stat.effective(defender.stats.hp, defender.stats) == 7
+    end
+
     test "returns not_found when attacker does not exist", ctx do
       mob = Entity.new(name: "goblin", type: :mob, pos: spawn_adjacent_pos(ctx.world_server))
       {:ok, _pos} = WorldServer.join_entity(mob, ctx.world_server)
       fake_id = UUID.generate()
 
-      assert {:error, :not_found} = CombatServer.attack(fake_id, mob.id, ctx.combat_server)
+      assert {:error, :not_found} =
+               CombatServer.attack(fake_id, mob.id, :melee_strike, ctx.combat_server)
     end
 
     test "returns not_found when defender does not exist", ctx do
@@ -157,7 +174,8 @@ defmodule Gameserver.CombatServerTest do
       {:ok, _pos} = WorldServer.join_user(user, ctx.world_server)
       fake_id = UUID.generate()
 
-      assert {:error, :not_found} = CombatServer.attack(user.id, fake_id, ctx.combat_server)
+      assert {:error, :not_found} =
+               CombatServer.attack(user.id, fake_id, :melee_strike, ctx.combat_server)
     end
 
     test "diagonal adjacency counts as in range", ctx do
@@ -173,7 +191,7 @@ defmodule Gameserver.CombatServerTest do
       {:ok, _pos} = WorldServer.join_entity(mob, ctx.world_server)
 
       assert {:ok, {:attack, _cooldown_ms}} =
-               CombatServer.attack(user.id, mob.id, ctx.combat_server)
+               CombatServer.attack(user.id, mob.id, :melee_strike, ctx.combat_server)
     end
 
     test "broadcasts entity_updated with reduced hp", ctx do
@@ -187,7 +205,7 @@ defmodule Gameserver.CombatServerTest do
       assert_receive {:entity_created, _}
       assert_receive {:entity_created, _}
 
-      {:ok, _} = CombatServer.attack(user.id, mob.id, ctx.combat_server)
+      {:ok, _} = CombatServer.attack(user.id, mob.id, :melee_strike, ctx.combat_server)
 
       assert_receive {:entity_updated, updated_mob}
       assert updated_mob.id == mob.id
@@ -202,7 +220,8 @@ defmodule Gameserver.CombatServerTest do
       mob = Entity.new(name: "goblin", type: :mob, pos: non_spawn_adjacent_pos(ctx.world_server))
       {:ok, _pos} = WorldServer.join_entity(mob, ctx.world_server)
 
-      assert {:error, :out_of_range} = CombatServer.attack(user.id, mob.id, ctx.combat_server)
+      assert {:error, :out_of_range} =
+               CombatServer.attack(user.id, mob.id, :melee_strike, ctx.combat_server)
     end
 
     test "returns target_dead when defender is already dead", ctx do
@@ -212,7 +231,8 @@ defmodule Gameserver.CombatServerTest do
       mob = %{mob | stats: %{mob.stats | dead: true}}
       {:ok, _pos} = WorldServer.join_entity(mob, ctx.world_server)
 
-      assert {:error, :target_dead} = CombatServer.attack(user.id, mob.id, ctx.combat_server)
+      assert {:error, :target_dead} =
+               CombatServer.attack(user.id, mob.id, :melee_strike, ctx.combat_server)
     end
 
     test "does not broadcast combat event on failed attack", ctx do
@@ -221,7 +241,9 @@ defmodule Gameserver.CombatServerTest do
       {:ok, _pos} = WorldServer.join_user(user, ctx.world_server)
       fake_id = UUID.generate()
 
-      {:error, :not_found} = CombatServer.attack(user.id, fake_id, ctx.combat_server)
+      {:error, :not_found} =
+        CombatServer.attack(user.id, fake_id, :melee_strike, ctx.combat_server)
+
       refute_receive {:combat_event, _}
     end
 
@@ -232,7 +254,7 @@ defmodule Gameserver.CombatServerTest do
       mob = Entity.new(name: "goblin", type: :mob, pos: spawn_adjacent_pos(ctx.world_server))
       {:ok, _pos} = WorldServer.join_entity(mob, ctx.world_server)
 
-      {:ok, _} = CombatServer.attack(user.id, mob.id, ctx.combat_server)
+      {:ok, _} = CombatServer.attack(user.id, mob.id, :melee_strike, ctx.combat_server)
 
       assert_receive {:combat_event, event}
       assert event.attacker_id == user.id
@@ -260,7 +282,7 @@ defmodule Gameserver.CombatServerTest do
 
       {:ok, _pos} = WorldServer.join_entity(mob, ctx.world_server)
 
-      {:ok, _} = CombatServer.attack(user.id, mob.id, ctx.combat_server)
+      {:ok, _} = CombatServer.attack(user.id, mob.id, :melee_strike, ctx.combat_server)
 
       {:ok, defender} = EntityServer.get_entity(mob.id, ctx.entity_server)
       assert defender.stats.dead

@@ -92,7 +92,7 @@ defmodule Gameserver.Mob do
 
   @impl GenServer
   def handle_info(:attack_target, %{aggro_target: target} = state) when target != nil do
-    case CombatServer.attack(state.id, target, state.combat_server) do
+    case CombatServer.attack(state.id, target, :melee_strike, state.combat_server) do
       {:ok, _cooldown} ->
         timer = Process.send_after(self(), :attack_target, @attack_interval_ms)
         {:noreply, %{state | attack_timer: timer}}
