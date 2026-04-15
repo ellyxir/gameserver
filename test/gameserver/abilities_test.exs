@@ -4,6 +4,7 @@ defmodule Gameserver.AbilitiesTest do
   alias Gameserver.Abilities
   alias Gameserver.Ability
   alias Gameserver.Effects.DirectDmg
+  alias Gameserver.Effects.DoT
 
   describe "get/1" do
     test "returns melee_strike ability" do
@@ -22,6 +23,19 @@ defmodule Gameserver.AbilitiesTest do
       assert ability.cooldown_ms == 1500
       assert ability.tags == [:physical, :melee]
       assert ability.effects == [{DirectDmg, %{base: 3}}]
+    end
+
+    test "returns poison_strike with direct damage and dot effects" do
+      assert {:ok, %Ability{id: :poison_strike} = ability} = Abilities.get(:poison_strike)
+      assert ability.name == "Poison Strike"
+      assert ability.range == 1
+      assert ability.cooldown_ms == 1000
+      assert ability.tags == [:physical, :melee, :dot]
+
+      assert [
+               {DoT, %{base: 1, repeat_ms: 2000, kill_after_ms: 10_000}},
+               {DirectDmg, %{base: 1}}
+             ] = ability.effects
     end
 
     test "returns error for unknown ability" do

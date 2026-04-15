@@ -1,6 +1,7 @@
 defmodule Gameserver.TickServerTest do
   use ExUnit.Case, async: true
 
+  alias Gameserver.CombatServer
   alias Gameserver.Entity
   alias Gameserver.EntityServer
   alias Gameserver.HpStat
@@ -124,6 +125,52 @@ defmodule Gameserver.TickServerTest do
       {:ok, updated} = EntityServer.get_entity(entity.id, ctx.entity_server)
       assert updated.ticks == %{}
       assert updated.stats.defense == 99
+    end
+  end
+
+  describe "ability integration" do
+    test "multi-effect ability applies immediate damage and registers a dot tick", ctx do
+      alias Gameserver.Ability
+      alias Gameserver.Effects.DirectDmg
+      alias Gameserver.Effects.DoT
+
+      ability = %Ability{
+        id: :test_poison,
+        name: "Test Poison",
+        tags: [:physical, :melee, :dot],
+        range: 1,
+        cooldown_ms: 1000,
+        effects: [
+          {DirectDmg, %{base: 1}},
+          {DoT, %{base: 1, repeat_ms: 50, kill_after_ms: 200}}
+        ]
+      }
+
+      source = create_entity(ctx.entity_server)
+      target = create_entity(ctx.entity_server)
+      initial_hp = Stat.effective(target.stats.hp, target.stats)
+
+      transforms = CombatServer.execute_ability(ability, source, target)
+
+      update_fn = fn entity ->
+        Enum.reduce(transforms, entity, fn transform, acc -> transform.(acc) end)
+      end
+
+      {:ok, updated} = EntityServer.update_entity(target.id, update_fn, ctx.entity_server)
+
+      # immediate damage from DirectDmg
+      hp_after_hit = Stat.effective(updated.stats.hp, updated.stats)
+      assert hp_after_hit == initial_hp - 1
+
+      # DoT registered a tick
+      assert map_size(updated.ticks) == 1
+
+      # wait for tick server to execute a few ticks
+      Process.sleep(150)
+
+      {:ok, after_ticks} = EntityServer.get_entity(target.id, ctx.entity_server)
+      hp_after_ticks = Stat.effective(after_ticks.stats.hp, after_ticks.stats)
+      assert hp_after_ticks < hp_after_hit
     end
   end
 end
