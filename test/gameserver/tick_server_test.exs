@@ -1,6 +1,7 @@
 defmodule Gameserver.TickServerTest do
   use ExUnit.Case, async: true
 
+  alias Gameserver.CombatEvent
   alias Gameserver.CombatServer
   alias Gameserver.Entity
   alias Gameserver.EntityServer
@@ -129,6 +130,43 @@ defmodule Gameserver.TickServerTest do
       {:ok, updated} = EntityServer.get_entity(entity.id, ctx.entity_server)
       assert updated.ticks == %{}
       assert updated.stats.defense == 99
+    end
+  end
+
+  describe "tick damage broadcasting" do
+    test "broadcasts a combat event when a tick deals damage", ctx do
+      Phoenix.PubSub.subscribe(Gameserver.PubSub, CombatServer.combat_topic())
+
+      source = create_entity(ctx.entity_server)
+      target = create_entity(ctx.entity_server)
+
+      tick =
+        Tick.new(
+          transform: fn e ->
+            hp = HpStat.apply_damage(e.stats.hp, 2)
+            {%{e | stats: %{e.stats | hp: hp}}, :stop}
+          end,
+          source_id: source.id,
+          repeat_ms: 50
+        )
+
+      {:ok, _updated} =
+        EntityServer.update_entity(
+          target.id,
+          &Entity.register_tick(&1, tick),
+          ctx.entity_server
+        )
+
+      assert_receive {:combat_event,
+                      %CombatEvent{
+                        attacker_id: attacker_id,
+                        defender_id: defender_id,
+                        damage: 2
+                      }},
+                     500
+
+      assert attacker_id == source.id
+      assert defender_id == target.id
     end
   end
 

@@ -85,6 +85,14 @@ defmodule Gameserver.Entity do
   end
 
   @doc """
+  Returns the tick, :error if not found
+  """
+  @spec get_tick(t(), tick_id :: UUID.t()) :: {:ok, Tick.t()} | :error
+  def get_tick(%__MODULE__{ticks: ticks} = _entity, tick_id) do
+    Map.fetch(ticks, tick_id)
+  end
+
+  @doc """
   Adds a bonus to a `BaseStat` field on this entity.
   Returns the updated entity and the generated bonus id.
   """

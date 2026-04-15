@@ -10,9 +10,11 @@ defmodule Gameserver.TickServer do
 
   use GenServer
 
+  alias Gameserver.CombatServer
   alias Gameserver.Effect
   alias Gameserver.Entity
   alias Gameserver.EntityServer
+  alias Gameserver.Stat
   alias Gameserver.Tick
   alias Gameserver.UUID
 
@@ -91,21 +93,24 @@ defmodule Gameserver.TickServer do
   def handle_info({:entity_created, _entity}, state), do: {:noreply, state}
   def handle_info({:entity_removed, _id}, state), do: {:noreply, state}
 
-  @spec execute_tick(UUID.t(), UUID.t(), pos_integer(), t()) ::
+  @spec execute_tick(tick :: UUID.t(), entity_id :: UUID.t(), repeat_ms :: pos_integer(), t()) ::
           {:noreply, t()}
   defp execute_tick(tick_id, entity_id, repeat_ms, state) do
-    result =
-      EntityServer.update_entity(
-        entity_id,
-        build_tick_update_fn(tick_id),
-        state.entity_server
-      )
-
-    case result do
-      {:ok, updated} when is_map_key(updated.ticks, tick_id) ->
-        Process.send_after(self(), {:tick, tick_id, repeat_ms}, repeat_ms)
-        {:noreply, state}
-
+    with {:ok, before_entity} <- EntityServer.get_entity(entity_id, state.entity_server),
+         {:ok, %Tick{source_id: source_id}} <- Entity.get_tick(before_entity, tick_id),
+         {:ok, updated_entity} <-
+           EntityServer.update_entity(
+             entity_id,
+             build_tick_update_fn(tick_id),
+             state.entity_server
+           ) do
+      hp_before = Stat.effective(before_entity.stats.hp, before_entity.stats)
+      hp_after = Stat.effective(updated_entity.stats.hp, updated_entity.stats)
+      dmg = hp_before - hp_after
+      CombatServer.broadcast_combat_event(source_id, updated_entity, dmg, hp_after)
+      Process.send_after(self(), {:tick, tick_id, repeat_ms}, repeat_ms)
+      {:noreply, state}
+    else
       _stopped_or_error ->
         {:noreply, %{state | tick_owners: Map.delete(state.tick_owners, tick_id)}}
     end

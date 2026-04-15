@@ -87,6 +87,23 @@ defmodule Gameserver.EntityTest do
     end
   end
 
+  describe "get_tick/2" do
+    test "returns the tick when it exists" do
+      entity = Entity.new(name: "test", type: :mob, pos: {0, 0})
+
+      tick =
+        Tick.new(transform: fn e -> {e, :continue} end, source_id: entity.id, repeat_ms: 3000)
+
+      entity = Entity.register_tick(entity, tick)
+      assert {:ok, ^tick} = Entity.get_tick(entity, tick.id)
+    end
+
+    test "returns :error when tick id not found" do
+      entity = Entity.new(name: "test", type: :mob, pos: {0, 0})
+      assert :error = Entity.get_tick(entity, UUID.generate())
+    end
+  end
+
   describe "id/1" do
     test "returns the entity id" do
       entity = Entity.new(name: "alice", type: :user, pos: {1, 1})
