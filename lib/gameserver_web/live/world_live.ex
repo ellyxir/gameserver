@@ -11,10 +11,10 @@ defmodule GameserverWeb.WorldLive do
   alias Gameserver.Ability
   alias Gameserver.CombatEvent
   alias Gameserver.CombatServer
+  alias Gameserver.Cooldowns
   alias Gameserver.Entity
   alias Gameserver.EntityServer
   alias Gameserver.Map, as: GameMap
-  alias Gameserver.Stats
   alias Gameserver.UUID
   alias Gameserver.WorldServer
   alias GameserverWeb.Entities
@@ -39,6 +39,8 @@ defmodule GameserverWeb.WorldLive do
 
         if Entities.has_entity?(entities, user_id) do
           map_cells = WorldServer.get_map() |> GameMap.to_cells()
+          {:ok, entity} = EntityServer.get_entity(user_id)
+          abilities = Enum.flat_map(entity.abilities, &resolve_ability/1)
 
           {:ok,
            socket
@@ -47,10 +49,14 @@ defmodule GameserverWeb.WorldLive do
              username: username,
              map_cells: map_cells,
              entities: entities,
-             player_stats: fetch_player_stats(user_id),
-             abilities: fetch_player_abilities(user_id),
+             player_stats: entity.stats,
+             player_cooldowns: entity.cooldowns,
+             abilities: abilities,
+             ability_ready: %{},
+             cooldown_refresh_ref: nil,
              target_id: nil
            )
+           |> refresh_cooldown_state()
            |> stream(:combat_log, [], limit: -@combat_log_limit)}
         else
           {:ok, push_navigate(socket, to: ~p"/game")}
@@ -169,15 +175,28 @@ defmodule GameserverWeb.WorldLive do
   end
 
   def handle_info(
-        {:entity_updated, %Entity{id: id, stats: stats}},
+        {:entity_updated, %Entity{id: id} = entity},
         %{assigns: %{user_id: id}} = socket
       ) do
-    {:noreply, assign(socket, :player_stats, stats)}
+    {:noreply,
+     socket
+     |> assign(
+       player_stats: entity.stats,
+       player_cooldowns: entity.cooldowns
+     )
+     |> refresh_cooldown_state()}
   end
 
   def handle_info({:entity_updated, _entity}, socket), do: {:noreply, socket}
   def handle_info({:entity_created, _entity}, socket), do: {:noreply, socket}
   def handle_info({:entity_removed, _id}, socket), do: {:noreply, socket}
+
+  def handle_info(:refresh_cooldowns, socket) do
+    {:noreply,
+     socket
+     |> assign(:cooldown_refresh_ref, nil)
+     |> refresh_cooldown_state()}
+  end
 
   def handle_info({:entity_left, id}, socket) do
     if id == socket.assigns.user_id do
@@ -199,19 +218,52 @@ defmodule GameserverWeb.WorldLive do
     end
   end
 
-  @spec fetch_player_stats(UUID.t()) :: Stats.t()
-  defp fetch_player_stats(user_id) do
-    case EntityServer.get_entity(user_id) do
-      {:ok, entity} -> entity.stats
-      {:error, :not_found} -> %Stats{}
+  # Scheduling buffer in ms — a small delay past the cooldown's scheduled end
+  # so that `Cooldowns.ready?/2` reliably reports true when we re-render.
+  @refresh_buffer_ms 10
+
+  # Recomputes the per-ability ready map from the current cooldowns and reschedules
+  # the next self-refresh. Cancels any outstanding refresh first so we don't
+  # accumulate timers across rapid `:entity_updated` broadcasts.
+  @spec refresh_cooldown_state(Phoenix.LiveView.Socket.t()) :: Phoenix.LiveView.Socket.t()
+  defp refresh_cooldown_state(socket) do
+    cooldowns = socket.assigns.player_cooldowns
+
+    ability_ready =
+      Map.new(socket.assigns.abilities, fn %Ability{id: id} ->
+        {id, Cooldowns.ready?(cooldowns, id)}
+      end)
+
+    socket
+    |> cancel_cooldown_refresh()
+    |> assign(:ability_ready, ability_ready)
+    |> schedule_next_refresh()
+  end
+
+  @spec cancel_cooldown_refresh(Phoenix.LiveView.Socket.t()) :: Phoenix.LiveView.Socket.t()
+  defp cancel_cooldown_refresh(socket) do
+    case socket.assigns.cooldown_refresh_ref do
+      nil ->
+        socket
+
+      ref ->
+        # If the timer already fired we may still process one stale
+        # `:refresh_cooldowns` from the inbox — that's harmless, the
+        # handler just recomputes against the current cooldowns.
+        Process.cancel_timer(ref)
+        assign(socket, :cooldown_refresh_ref, nil)
     end
   end
 
-  @spec fetch_player_abilities(UUID.t()) :: [Ability.t()]
-  defp fetch_player_abilities(user_id) do
-    case EntityServer.get_entity(user_id) do
-      {:ok, entity} -> Enum.flat_map(entity.abilities, &resolve_ability/1)
-      {:error, :not_found} -> []
+  @spec schedule_next_refresh(Phoenix.LiveView.Socket.t()) :: Phoenix.LiveView.Socket.t()
+  defp schedule_next_refresh(socket) do
+    case Cooldowns.next_ready_in_ms(socket.assigns.player_cooldowns) do
+      nil ->
+        socket
+
+      ms when is_integer(ms) ->
+        ref = Process.send_after(self(), :refresh_cooldowns, ms + @refresh_buffer_ms)
+        assign(socket, :cooldown_refresh_ref, ref)
     end
   end
 
