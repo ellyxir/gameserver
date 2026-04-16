@@ -79,15 +79,28 @@
         <%= for slot <- 0..4 do %>
           <% ability = Enum.at(@abilities, slot) %>
           <%= if ability do %>
+            <% seconds = Map.get(@ability_seconds_remaining, ability.id, 0) %>
+            <% ready = seconds == 0 %>
             <button
               type="button"
               phx-click="use_ability"
               phx-value-ability-id={Atom.to_string(ability.id)}
               data-ability-id={Atom.to_string(ability.id)}
-              class="flex-1 h-8 px-2 text-xs font-mono bg-gray-700 hover:bg-gray-600 text-gray-100 rounded truncate"
+              disabled={not ready}
+              class={[
+                "flex-1 h-8 px-2 text-xs font-mono text-gray-100 rounded truncate",
+                if(ready,
+                  do: "bg-gray-700 hover:bg-gray-600",
+                  else: "bg-gray-700 opacity-50 cursor-not-allowed"
+                )
+              ]}
               title={ability.name}
             >
-              {ability.name}
+              <%= if ready do %>
+                {ability.name}
+              <% else %>
+                {seconds}
+              <% end %>
             </button>
           <% else %>
             <div class="flex-1 h-8 bg-gray-900 rounded"></div>

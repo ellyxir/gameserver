@@ -47,4 +47,37 @@ defmodule Gameserver.Cooldowns do
   def check(%__MODULE__{} = cd, id) do
     if ready?(cd, id), do: :ok, else: {:error, :cooldown}
   end
+
+  @doc """
+  Returns the number of milliseconds remaining on a cooldown, or `0` if it's
+  ready or has never been started.
+  """
+  @spec remaining_ms(t(), id()) :: non_neg_integer()
+  def remaining_ms(%__MODULE__{timers: timers}, id) do
+    case Map.get(timers, id) do
+      nil ->
+        0
+
+      {started_at, duration} ->
+        max(started_at + duration - System.monotonic_time(:millisecond), 0)
+    end
+  end
+
+  @doc """
+  Returns the number of milliseconds until the next active cooldown expires,
+  or `nil` if all cooldowns are already ready.
+  """
+  @spec next_ready_in_ms(t()) :: pos_integer() | nil
+  def next_ready_in_ms(%__MODULE__{timers: timers}) do
+    now = System.monotonic_time(:millisecond)
+
+    timers
+    |> Enum.flat_map(fn {_id, {started_at, duration}} ->
+      case started_at + duration - now do
+        remaining when remaining > 0 -> [remaining]
+        _ -> []
+      end
+    end)
+    |> Enum.min(fn -> nil end)
+  end
 end
