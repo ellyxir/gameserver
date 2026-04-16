@@ -228,6 +228,170 @@ defmodule Gameserver.MobTest do
     end
   end
 
+  describe "ability selection" do
+    test "uses an ability from its abilities list (not hardcoded melee_strike)", ctx do
+      mob_id = UUID.generate()
+      player_id = UUID.generate()
+
+      player = Gameserver.Entity.new(id: player_id, name: "hero", type: :user)
+      {:ok, {px, py}} = WorldServer.join_entity(player, ctx.world_server)
+
+      # only :upper_cut (base damage 3, distinct from :melee_strike's 1)
+      mob = %Mob{
+        id: mob_id,
+        name: "goblin",
+        spawn_pos: {px + 1, py},
+        abilities: [:upper_cut],
+        world_server: ctx.world_server,
+        combat_server: ctx.combat_server
+      }
+
+      {:ok, pid} = Mob.start_link(mob)
+      _ = :sys.get_state(pid)
+
+      Phoenix.PubSub.subscribe(Gameserver.PubSub, CombatServer.combat_topic())
+
+      send(
+        pid,
+        {:combat_event,
+         %CombatEvent{attacker_id: player_id, defender_id: mob_id, damage: 1, defender_hp: 9}}
+      )
+
+      assert_receive {:combat_event, %CombatEvent{attacker_id: ^mob_id, defender_id: ^player_id}}
+
+      {:ok, player_entity} = EntityServer.get_entity(player_id, ctx.entity_server)
+      player_hp = Gameserver.Stat.effective(player_entity.stats.hp, player_entity.stats)
+      # upper_cut deals 3 damage, melee_strike would do 1
+      assert player_hp == 7
+    end
+
+    test "mob with empty abilities clears aggro on :attack_target", ctx do
+      mob_id = UUID.generate()
+      attacker_id = UUID.generate()
+
+      mob = %Mob{
+        id: mob_id,
+        name: "goblin",
+        spawn_pos: floor_pos(ctx.world_server),
+        abilities: [],
+        world_server: ctx.world_server,
+        combat_server: ctx.combat_server
+      }
+
+      {:ok, pid} = Mob.start_link(mob)
+      _ = :sys.get_state(pid)
+
+      # set aggro via combat_event
+      send(
+        pid,
+        {:combat_event,
+         %CombatEvent{attacker_id: attacker_id, defender_id: mob_id, damage: 5, defender_hp: 5}}
+      )
+
+      _ = :sys.get_state(pid)
+
+      send(pid, :attack_target)
+      state = :sys.get_state(pid)
+
+      assert state.aggro_target == nil
+      assert state.attack_timer == nil
+    end
+
+    test "when all abilities on cooldown, mob keeps aggro and reschedules", ctx do
+      mob_id = UUID.generate()
+      player_id = UUID.generate()
+
+      player = Gameserver.Entity.new(id: player_id, name: "hero", type: :user)
+      {:ok, {px, py}} = WorldServer.join_entity(player, ctx.world_server)
+
+      mob = %Mob{
+        id: mob_id,
+        name: "goblin",
+        spawn_pos: {px + 1, py},
+        abilities: [:melee_strike],
+        world_server: ctx.world_server,
+        combat_server: ctx.combat_server
+      }
+
+      {:ok, pid} = Mob.start_link(mob)
+      _ = :sys.get_state(pid)
+
+      # put :melee_strike on cooldown via entity cooldowns
+      {:ok, _} =
+        EntityServer.update_entity(
+          mob_id,
+          fn entity ->
+            cds = Gameserver.Cooldowns.start(entity.cooldowns, :melee_strike, 60_000)
+            %{entity | cooldowns: cds}
+          end,
+          ctx.entity_server
+        )
+
+      send(
+        pid,
+        {:combat_event,
+         %CombatEvent{attacker_id: player_id, defender_id: mob_id, damage: 5, defender_hp: 95}}
+      )
+
+      _ = :sys.get_state(pid)
+
+      send(pid, :attack_target)
+      state = :sys.get_state(pid)
+
+      assert state.aggro_target == player_id
+      assert state.attack_timer != nil
+    end
+
+    test "retries with another ability when one is on cooldown", ctx do
+      mob_id = UUID.generate()
+      player_id = UUID.generate()
+
+      player = Gameserver.Entity.new(id: player_id, name: "hero", type: :user)
+      {:ok, {px, py}} = WorldServer.join_entity(player, ctx.world_server)
+
+      mob = %Mob{
+        id: mob_id,
+        name: "goblin",
+        spawn_pos: {px + 1, py},
+        abilities: [:melee_strike, :upper_cut],
+        world_server: ctx.world_server,
+        combat_server: ctx.combat_server
+      }
+
+      {:ok, pid} = Mob.start_link(mob)
+      _ = :sys.get_state(pid)
+
+      # put only :melee_strike on cooldown; :upper_cut is still ready
+      {:ok, _} =
+        EntityServer.update_entity(
+          mob_id,
+          fn entity ->
+            cds = Gameserver.Cooldowns.start(entity.cooldowns, :melee_strike, 60_000)
+            %{entity | cooldowns: cds}
+          end,
+          ctx.entity_server
+        )
+
+      Phoenix.PubSub.subscribe(Gameserver.PubSub, CombatServer.combat_topic())
+
+      send(
+        pid,
+        {:combat_event,
+         %CombatEvent{attacker_id: player_id, defender_id: mob_id, damage: 5, defender_hp: 95}}
+      )
+
+      # mob should attack successfully, regardless of which ability random picked first.
+      # if random picked :melee_strike first, retry kicks in; if :upper_cut, direct success.
+      # either way the only ready ability is :upper_cut, so player loses 3 hp.
+      assert_receive {:combat_event, %CombatEvent{attacker_id: ^mob_id, defender_id: ^player_id}}
+
+      {:ok, player_entity} = EntityServer.get_entity(player_id, ctx.entity_server)
+      player_hp = Gameserver.Stat.effective(player_entity.stats.hp, player_entity.stats)
+      # upper_cut deals 3, melee_strike (on cooldown) would have been 1
+      assert player_hp == 7
+    end
+  end
+
   describe "init/1" do
     test "creates entity and joins the world", ctx do
       id = UUID.generate()
