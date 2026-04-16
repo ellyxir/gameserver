@@ -364,7 +364,7 @@ defmodule GameserverWeb.WorldLiveTest do
 
       {:ok, view, _html} = live(conn, ~p"/world?user_id=#{user.id}")
 
-      render_click(view, "use_ability", %{"ability_id" => "battle_shout"})
+      render_click(view, "use_ability", %{"ability-id" => "battle_shout"})
 
       {:ok, entity} = EntityServer.get_entity(user.id)
       # battle_shout grants +3 str, default str is 10
@@ -387,7 +387,7 @@ defmodule GameserverWeb.WorldLiveTest do
       render_keydown(view, "keydown", %{"key" => "d"})
 
       # click upper_cut button (3 damage, hp 9→6)
-      render_click(view, "use_ability", %{"ability_id" => "upper_cut"})
+      render_click(view, "use_ability", %{"ability-id" => "upper_cut"})
 
       assert has_element?(view, "#combat-log div", "You hit goblin for 3 (6 hp)")
     end
@@ -398,7 +398,7 @@ defmodule GameserverWeb.WorldLiveTest do
 
       {:ok, view, _html} = live(conn, ~p"/world?user_id=#{user.id}")
 
-      render_click(view, "use_ability", %{"ability_id" => "melee_strike"})
+      render_click(view, "use_ability", %{"ability-id" => "melee_strike"})
 
       refute has_element?(view, "#combat-log div", "You hit")
     end
@@ -422,7 +422,7 @@ defmodule GameserverWeb.WorldLiveTest do
       {:ok, view, _html} = live(conn, ~p"/world?user_id=#{user.id}")
 
       # try to use upper_cut (not in list)
-      render_click(view, "use_ability", %{"ability_id" => "upper_cut"})
+      render_click(view, "use_ability", %{"ability-id" => "upper_cut"})
 
       refute has_element?(view, "#combat-log div", "You hit")
     end
@@ -449,9 +449,51 @@ defmodule GameserverWeb.WorldLiveTest do
       :ok = WorldServer.leave(mob.id)
 
       # clicking upper_cut after target has left should not hit anything
-      render_click(view, "use_ability", %{"ability_id" => "upper_cut"})
+      render_click(view, "use_ability", %{"ability-id" => "upper_cut"})
 
       refute has_element?(view, "#combat-log div", "for 3")
+    end
+
+    test "renders a button for each player ability", %{conn: conn} do
+      {:ok, user} = User.new("buttoner")
+      {:ok, _pos} = WorldServer.join_user(user)
+
+      alias Gameserver.EntityServer
+      {:ok, entity} = EntityServer.get_entity(user.id)
+      assert entity.abilities != []
+
+      {:ok, view, _html} = live(conn, ~p"/world?user_id=#{user.id}")
+
+      for ability_id <- entity.abilities do
+        selector = ~s(#ability-bar button[data-ability-id="#{ability_id}"])
+        assert has_element?(view, selector), "expected ability button for #{ability_id}"
+      end
+    end
+
+    test "renders 5 ability slots even when player has fewer abilities", %{conn: conn} do
+      {:ok, user} = User.new("sparse")
+      {:ok, _pos} = WorldServer.join_user(user)
+
+      alias Gameserver.EntityServer
+
+      # restrict user to 2 abilities
+      [a, b | _] = Gameserver.Abilities.player_abilities()
+
+      {:ok, _} =
+        EntityServer.update_entity(user.id, fn entity ->
+          %{entity | abilities: [a, b]}
+        end)
+
+      {:ok, view, _html} = live(conn, ~p"/world?user_id=#{user.id}")
+
+      # 2 real buttons
+      assert has_element?(view, ~s(#ability-bar button[data-ability-id="#{a}"]))
+      assert has_element?(view, ~s(#ability-bar button[data-ability-id="#{b}"]))
+
+      # 5th slot exists, meaning the bar pads empty slots up to 5
+      assert has_element?(view, "#ability-bar > *:nth-child(5)")
+      # no 6th slot though
+      refute has_element?(view, "#ability-bar > *:nth-child(6)")
     end
 
     test "shows message when mob attacks player", %{conn: conn} do

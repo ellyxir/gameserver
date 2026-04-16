@@ -87,39 +87,27 @@ defmodule GameserverWeb.WorldLive do
     end
   end
 
-  def handle_event("use_ability", %{"ability_id" => ability_str}, socket) do
-    case resolve_player_ability(socket, ability_str) do
-      {:ok, ability_id, ability} -> invoke_ability(socket, ability_id, ability)
-      :error -> {:noreply, socket}
+  def handle_event("use_ability", %{"ability-id" => ability_str}, socket) do
+    case Enum.find(socket.assigns.abilities, fn a -> Atom.to_string(a.id) == ability_str end) do
+      nil -> {:noreply, socket}
+      ability -> invoke_ability(socket, ability)
     end
   end
 
-  @spec resolve_player_ability(Phoenix.LiveView.Socket.t(), String.t()) ::
-          {:ok, atom(), Ability.t()} | :error
-  defp resolve_player_ability(socket, ability_str) do
-    with ability_id when not is_nil(ability_id) <-
-           Enum.find(socket.assigns.abilities, fn a -> Atom.to_string(a) == ability_str end),
-         {:ok, ability} <- Abilities.get(ability_id) do
-      {:ok, ability_id, ability}
-    else
-      _ -> :error
-    end
-  end
-
-  @spec invoke_ability(Phoenix.LiveView.Socket.t(), atom(), Ability.t()) ::
+  @spec invoke_ability(Phoenix.LiveView.Socket.t(), Ability.t()) ::
           {:noreply, Phoenix.LiveView.Socket.t()}
-  defp invoke_ability(socket, ability_id, %Ability{range: 0}) do
-    CombatServer.use_ability(socket.assigns.user_id, socket.assigns.user_id, ability_id)
+  defp invoke_ability(socket, %Ability{id: id, range: 0}) do
+    CombatServer.use_ability(socket.assigns.user_id, socket.assigns.user_id, id)
     {:noreply, socket}
   end
 
-  defp invoke_ability(socket, ability_id, %Ability{range: range}) when range > 0 do
+  defp invoke_ability(socket, %Ability{id: id, range: range}) when range > 0 do
     case socket.assigns.target_id do
       nil ->
         {:noreply, socket}
 
       target_id ->
-        CombatServer.use_ability(socket.assigns.user_id, target_id, ability_id)
+        CombatServer.use_ability(socket.assigns.user_id, target_id, id)
         {:noreply, socket}
     end
   end
@@ -153,8 +141,8 @@ defmodule GameserverWeb.WorldLive do
   @spec attack_on_collision(Phoenix.LiveView.Socket.t(), UUID.t()) ::
           {:noreply, Phoenix.LiveView.Socket.t()}
   defp attack_on_collision(socket, mob_id) do
-    [ability_id | _] = socket.assigns.abilities
-    CombatServer.use_ability(socket.assigns.user_id, mob_id, ability_id)
+    [%Ability{id: id} | _] = socket.assigns.abilities
+    CombatServer.use_ability(socket.assigns.user_id, mob_id, id)
     {:noreply, assign(socket, target_id: mob_id)}
   end
 
@@ -219,11 +207,19 @@ defmodule GameserverWeb.WorldLive do
     end
   end
 
-  @spec fetch_player_abilities(UUID.t()) :: [atom()]
+  @spec fetch_player_abilities(UUID.t()) :: [Ability.t()]
   defp fetch_player_abilities(user_id) do
     case EntityServer.get_entity(user_id) do
-      {:ok, entity} -> entity.abilities
+      {:ok, entity} -> Enum.flat_map(entity.abilities, &resolve_ability/1)
       {:error, :not_found} -> []
+    end
+  end
+
+  @spec resolve_ability(atom()) :: [Ability.t()]
+  defp resolve_ability(ability_id) do
+    case Abilities.get(ability_id) do
+      {:ok, ability} -> [ability]
+      {:error, _} -> []
     end
   end
 

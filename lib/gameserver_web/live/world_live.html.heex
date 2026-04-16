@@ -75,6 +75,25 @@
           {entry.message}
         </div>
       </div>
+      <div id="ability-bar" class="mt-2 flex gap-2">
+        <%= for slot <- 0..4 do %>
+          <% ability = Enum.at(@abilities, slot) %>
+          <%= if ability do %>
+            <button
+              type="button"
+              phx-click="use_ability"
+              phx-value-ability-id={Atom.to_string(ability.id)}
+              data-ability-id={Atom.to_string(ability.id)}
+              class="flex-1 h-8 px-2 text-xs font-mono bg-gray-700 hover:bg-gray-600 text-gray-100 rounded truncate"
+              title={ability.name}
+            >
+              {ability.name}
+            </button>
+          <% else %>
+            <div class="flex-1 h-8 bg-gray-900 rounded"></div>
+          <% end %>
+        <% end %>
+      </div>
     </div>
 
     <div>
