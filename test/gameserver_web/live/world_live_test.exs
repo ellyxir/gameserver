@@ -329,6 +329,173 @@ defmodule GameserverWeb.WorldLiveTest do
       assert has_element?(view, "#combat-log div", "You hit goblin for 1 (9 hp)")
     end
 
+    test "collision attacks mob with player's first ability", %{conn: conn} do
+      {:ok, user} = User.new("bumper")
+      {:ok, {px, py}} = WorldServer.join_user(user)
+
+      alias Gameserver.Entity
+      alias Gameserver.EntityServer
+
+      # override user's abilities to [:upper_cut] (base damage 3, not 1)
+      {:ok, _} =
+        EntityServer.update_entity(user.id, fn entity ->
+          %{entity | abilities: [:upper_cut]}
+        end)
+
+      # place mob east of player
+      mob = Entity.new(name: "goblin", type: :mob, pos: {px + 1, py})
+      {:ok, _pos} = WorldServer.join_entity(mob)
+
+      {:ok, view, _html} = live(conn, ~p"/world?user_id=#{user.id}")
+
+      # bump east into the mob
+      render_keydown(view, "keydown", %{"key" => "d"})
+
+      # upper_cut does 3 damage, so mob hp goes from 10 to 7
+      assert has_element?(view, "#combat-log div", "You hit goblin for 3 (7 hp)")
+    end
+
+    test "use_ability click on self-cast ability buffs the player", %{conn: conn} do
+      {:ok, user} = User.new("selfcaster")
+      {:ok, _pos} = WorldServer.join_user(user)
+
+      alias Gameserver.EntityServer
+      alias Gameserver.Stat
+
+      {:ok, view, _html} = live(conn, ~p"/world?user_id=#{user.id}")
+
+      render_click(view, "use_ability", %{"ability-id" => "battle_shout"})
+
+      {:ok, entity} = EntityServer.get_entity(user.id)
+      # battle_shout grants +3 str, default str is 10
+      assert Stat.effective(entity.stats.str, entity.stats) == 13
+    end
+
+    test "use_ability click on targeted ability attacks target", %{conn: conn} do
+      {:ok, user} = User.new("clicker")
+      {:ok, {px, py}} = WorldServer.join_user(user)
+
+      alias Gameserver.Entity
+
+      # place mob east of player
+      mob = Entity.new(name: "goblin", type: :mob, pos: {px + 1, py})
+      {:ok, _pos} = WorldServer.join_entity(mob)
+
+      {:ok, view, _html} = live(conn, ~p"/world?user_id=#{user.id}")
+
+      # collide once to set target_id (attacks with melee_strike, 1 damage, hp 10→9)
+      render_keydown(view, "keydown", %{"key" => "d"})
+
+      # click upper_cut button (3 damage, hp 9→6)
+      render_click(view, "use_ability", %{"ability-id" => "upper_cut"})
+
+      assert has_element?(view, "#combat-log div", "You hit goblin for 3 (6 hp)")
+    end
+
+    test "use_ability click on targeted ability is a no-op when no target", %{conn: conn} do
+      {:ok, user} = User.new("notargeter")
+      {:ok, _pos} = WorldServer.join_user(user)
+
+      {:ok, view, _html} = live(conn, ~p"/world?user_id=#{user.id}")
+
+      render_click(view, "use_ability", %{"ability-id" => "melee_strike"})
+
+      refute has_element?(view, "#combat-log div", "You hit")
+    end
+
+    test "use_ability click on unknown ability is a no-op", %{conn: conn} do
+      {:ok, user} = User.new("cheater")
+      {:ok, {px, py}} = WorldServer.join_user(user)
+
+      alias Gameserver.EntityServer
+
+      # restrict user's abilities so :upper_cut is not in the list
+      {:ok, _} =
+        EntityServer.update_entity(user.id, fn entity ->
+          %{entity | abilities: [:melee_strike]}
+        end)
+
+      alias Gameserver.Entity
+      mob = Entity.new(name: "goblin", type: :mob, pos: {px + 1, py})
+      {:ok, _pos} = WorldServer.join_entity(mob)
+
+      {:ok, view, _html} = live(conn, ~p"/world?user_id=#{user.id}")
+
+      # try to use upper_cut (not in list)
+      render_click(view, "use_ability", %{"ability-id" => "upper_cut"})
+
+      refute has_element?(view, "#combat-log div", "You hit")
+    end
+
+    test "clicking targeted ability after target left is a no-op", %{conn: conn} do
+      {:ok, user} = User.new("leaver")
+      {:ok, {px, py}} = WorldServer.join_user(user)
+
+      alias Gameserver.Entity
+
+      # place mob east of player
+      mob = Entity.new(name: "goblin", type: :mob, pos: {px + 1, py})
+      {:ok, _pos} = WorldServer.join_entity(mob)
+
+      {:ok, view, _html} = live(conn, ~p"/world?user_id=#{user.id}")
+
+      # collide once to set target_id
+      render_keydown(view, "keydown", %{"key" => "d"})
+
+      # drain the collision's combat event from the log
+      _ = render(view)
+
+      # mob leaves the world
+      :ok = WorldServer.leave(mob.id)
+
+      # clicking upper_cut after target has left should not hit anything
+      render_click(view, "use_ability", %{"ability-id" => "upper_cut"})
+
+      refute has_element?(view, "#combat-log div", "for 3")
+    end
+
+    test "renders a button for each player ability", %{conn: conn} do
+      {:ok, user} = User.new("buttoner")
+      {:ok, _pos} = WorldServer.join_user(user)
+
+      alias Gameserver.EntityServer
+      {:ok, entity} = EntityServer.get_entity(user.id)
+      assert entity.abilities != []
+
+      {:ok, view, _html} = live(conn, ~p"/world?user_id=#{user.id}")
+
+      for ability_id <- entity.abilities do
+        selector = ~s(#ability-bar button[data-ability-id="#{ability_id}"])
+        assert has_element?(view, selector), "expected ability button for #{ability_id}"
+      end
+    end
+
+    test "renders 5 ability slots even when player has fewer abilities", %{conn: conn} do
+      {:ok, user} = User.new("sparse")
+      {:ok, _pos} = WorldServer.join_user(user)
+
+      alias Gameserver.EntityServer
+
+      # restrict user to 2 abilities
+      [a, b | _] = Gameserver.Abilities.player_abilities()
+
+      {:ok, _} =
+        EntityServer.update_entity(user.id, fn entity ->
+          %{entity | abilities: [a, b]}
+        end)
+
+      {:ok, view, _html} = live(conn, ~p"/world?user_id=#{user.id}")
+
+      # 2 real buttons
+      assert has_element?(view, ~s(#ability-bar button[data-ability-id="#{a}"]))
+      assert has_element?(view, ~s(#ability-bar button[data-ability-id="#{b}"]))
+
+      # 5th slot exists, meaning the bar pads empty slots up to 5
+      assert has_element?(view, "#ability-bar > *:nth-child(5)")
+      # no 6th slot though
+      refute has_element?(view, "#ability-bar > *:nth-child(6)")
+    end
+
     test "shows message when mob attacks player", %{conn: conn} do
       {:ok, user} = User.new("defender")
       {:ok, _pos} = WorldServer.join_user(user)

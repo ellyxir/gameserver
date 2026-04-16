@@ -134,6 +134,42 @@ defmodule Gameserver.TickServerTest do
   end
 
   describe "tick damage broadcasting" do
+    test "does not broadcast or run transform for dead entities", ctx do
+      Phoenix.PubSub.subscribe(Gameserver.PubSub, CombatServer.combat_topic())
+
+      source = create_entity(ctx.entity_server)
+      target = create_entity(ctx.entity_server)
+
+      tick =
+        Tick.new(
+          transform: fn e ->
+            hp = HpStat.apply_damage(e.stats.hp, 1)
+            {%{e | stats: %{e.stats | hp: hp}}, :continue}
+          end,
+          source_id: source.id,
+          repeat_ms: 30,
+          kill_after_ms: 150
+        )
+
+      {:ok, _} =
+        EntityServer.update_entity(
+          target.id,
+          fn e ->
+            e
+            |> Entity.register_tick(tick)
+            |> Map.update!(:stats, &%{&1 | dead: true})
+          end,
+          ctx.entity_server
+        )
+
+      source_id = source.id
+      target_id = target.id
+
+      refute_receive {:combat_event,
+                      %CombatEvent{attacker_id: ^source_id, defender_id: ^target_id}},
+                     200
+    end
+
     test "broadcasts a combat event when a tick deals damage", ctx do
       Phoenix.PubSub.subscribe(Gameserver.PubSub, CombatServer.combat_topic())
 

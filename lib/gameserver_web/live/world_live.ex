@@ -7,6 +7,8 @@ defmodule GameserverWeb.WorldLive do
 
   use GameserverWeb, :live_view
 
+  alias Gameserver.Abilities
+  alias Gameserver.Ability
   alias Gameserver.CombatEvent
   alias Gameserver.CombatServer
   alias Gameserver.Entity
@@ -45,7 +47,9 @@ defmodule GameserverWeb.WorldLive do
              username: username,
              map_cells: map_cells,
              entities: entities,
-             player_stats: fetch_player_stats(user_id)
+             player_stats: fetch_player_stats(user_id),
+             abilities: fetch_player_abilities(user_id),
+             target_id: nil
            )
            |> stream(:combat_log, [], limit: -@combat_log_limit)}
         else
@@ -83,6 +87,31 @@ defmodule GameserverWeb.WorldLive do
     end
   end
 
+  def handle_event("use_ability", %{"ability-id" => ability_str}, socket) do
+    case Enum.find(socket.assigns.abilities, fn a -> Atom.to_string(a.id) == ability_str end) do
+      nil -> {:noreply, socket}
+      ability -> invoke_ability(socket, ability)
+    end
+  end
+
+  @spec invoke_ability(Phoenix.LiveView.Socket.t(), Ability.t()) ::
+          {:noreply, Phoenix.LiveView.Socket.t()}
+  defp invoke_ability(socket, %Ability{id: id, range: 0}) do
+    CombatServer.use_ability(socket.assigns.user_id, socket.assigns.user_id, id)
+    {:noreply, socket}
+  end
+
+  defp invoke_ability(socket, %Ability{id: id, range: range}) when range > 0 do
+    case socket.assigns.target_id do
+      nil ->
+        {:noreply, socket}
+
+      target_id ->
+        CombatServer.use_ability(socket.assigns.user_id, target_id, id)
+        {:noreply, socket}
+    end
+  end
+
   @spec direction_from(GameMap.coord(), GameMap.coord()) :: GameMap.direction() | nil
   defp direction_from(same, same), do: nil
 
@@ -102,12 +131,19 @@ defmodule GameserverWeb.WorldLive do
   defp move_player(socket, direction) do
     case WorldServer.move(socket.assigns.user_id, direction) do
       {:error, {:collision, _pos, {:mob, mob_id}}} ->
-        CombatServer.attack(socket.assigns.user_id, mob_id)
-        {:noreply, socket}
+        attack_on_collision(socket, mob_id)
 
       _ ->
         {:noreply, socket}
     end
+  end
+
+  @spec attack_on_collision(Phoenix.LiveView.Socket.t(), UUID.t()) ::
+          {:noreply, Phoenix.LiveView.Socket.t()}
+  defp attack_on_collision(socket, mob_id) do
+    [%Ability{id: id} | _] = socket.assigns.abilities
+    CombatServer.use_ability(socket.assigns.user_id, mob_id, id)
+    {:noreply, assign(socket, target_id: mob_id)}
   end
 
   @impl Phoenix.LiveView
@@ -168,6 +204,22 @@ defmodule GameserverWeb.WorldLive do
     case EntityServer.get_entity(user_id) do
       {:ok, entity} -> entity.stats
       {:error, :not_found} -> %Stats{}
+    end
+  end
+
+  @spec fetch_player_abilities(UUID.t()) :: [Ability.t()]
+  defp fetch_player_abilities(user_id) do
+    case EntityServer.get_entity(user_id) do
+      {:ok, entity} -> Enum.flat_map(entity.abilities, &resolve_ability/1)
+      {:error, :not_found} -> []
+    end
+  end
+
+  @spec resolve_ability(atom()) :: [Ability.t()]
+  defp resolve_ability(ability_id) do
+    case Abilities.get(ability_id) do
+      {:ok, ability} -> [ability]
+      {:error, _} -> []
     end
   end
 

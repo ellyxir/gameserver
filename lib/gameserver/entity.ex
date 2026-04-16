@@ -13,10 +13,22 @@ defmodule Gameserver.Entity do
   alias Gameserver.Tick
   alias Gameserver.UUID
 
-  defstruct [:id, :type, :name, :pos, stats: %Stats{}, cooldowns: %Cooldowns{}, ticks: %{}]
+  defstruct [
+    :id,
+    :type,
+    :name,
+    :pos,
+    stats: %Stats{},
+    abilities: [],
+    cooldowns: %Cooldowns{},
+    ticks: %{}
+  ]
 
   @typedoc "Entity type — either a user-controlled player or a server-controlled mob"
   @type entity_type() :: :user | :mob
+
+  @typedoc "Ability ids that can be looked up via `Abilities.get/1`"
+  @type ability_list() :: [atom()]
 
   @typedoc "An entity in the game world"
   @type t() :: %__MODULE__{
@@ -25,6 +37,7 @@ defmodule Gameserver.Entity do
           name: String.t(),
           pos: GameMap.coord() | nil,
           stats: Stats.t(),
+          abilities: ability_list(),
           cooldowns: Cooldowns.t(),
           ticks: %{UUID.t() => Tick.t()}
         }
@@ -36,6 +49,7 @@ defmodule Gameserver.Entity do
            | {:name, String.t()}
            | {:pos, GameMap.coord()}
            | {:stats, Stats.t()}
+           | {:abilities, [atom()]}
            | {:cooldowns, Cooldowns.t()}
            | {:ticks, %{UUID.t() => Tick.t()}}
 
@@ -50,7 +64,7 @@ defmodule Gameserver.Entity do
   """
   @spec new(Gameserver.Mob.t() | options()) :: t()
   def new(%Gameserver.Mob{} = mob) do
-    new(id: mob.id, name: mob.name, type: :mob, pos: mob.spawn_pos)
+    new(id: mob.id, name: mob.name, type: :mob, pos: mob.spawn_pos, abilities: mob.abilities)
   end
 
   def new(opts) do

@@ -14,7 +14,14 @@ defmodule Gameserver.EntityTest do
       assert entity.pos == {1, 1}
       assert %Stats{} = entity.stats
       assert %Gameserver.Cooldowns{} = entity.cooldowns
+      assert entity.abilities == []
       assert is_binary(entity.id)
+    end
+
+    test "creates an entity with explicit abilities" do
+      abilities = [:melee_strike, :poison_strike]
+      entity = Entity.new(name: "bob", type: :user, pos: {0, 0}, abilities: abilities)
+      assert entity.abilities == [:melee_strike, :poison_strike]
     end
 
     test "creates a mob entity with custom stats" do
@@ -23,6 +30,20 @@ defmodule Gameserver.EntityTest do
       assert entity.type == :mob
       assert entity.name == "goblin"
       assert entity.stats.attack_power == 2
+    end
+
+    test "creates entity from mob struct with abilities" do
+      mob = %Gameserver.Mob{
+        id: UUID.generate(),
+        name: "goblin",
+        spawn_pos: {2, 3},
+        abilities: [:melee_strike, :poison_strike]
+      }
+
+      entity = Entity.new(mob)
+      assert entity.abilities == [:melee_strike, :poison_strike]
+      assert entity.name == "goblin"
+      assert entity.type == :mob
     end
 
     test "raises on unknown keys" do

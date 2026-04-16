@@ -46,6 +46,8 @@ defmodule Gameserver.MobServer do
     DynamicSupervisor.init(strategy: :one_for_one)
   end
 
+  @mob_abilities [:melee_strike, :poison_strike]
+
   @spec spawn_mob(GenServer.server(), String.t(), GameMap.coord(), GenServer.server()) ::
           DynamicSupervisor.on_start_child()
   defp spawn_mob(supervisor, name, pos, world_server) do
@@ -53,6 +55,7 @@ defmodule Gameserver.MobServer do
       id: UUID.generate(),
       name: name,
       spawn_pos: pos,
+      abilities: @mob_abilities,
       world_server: world_server
     }
 
