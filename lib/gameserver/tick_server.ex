@@ -101,6 +101,7 @@ defmodule Gameserver.TickServer do
           {:noreply, t()}
   defp execute_tick(tick_id, entity_id, repeat_ms, state) do
     with {:ok, before_entity} <- EntityServer.get_entity(entity_id, state.entity_server),
+         {:alive_check, true} <- {:alive_check, !before_entity.stats.dead},
          {:ok, %Tick{source_id: source_id}} <- Entity.get_tick(before_entity, tick_id),
          {:ok, updated_entity} <-
            EntityServer.update_entity(
