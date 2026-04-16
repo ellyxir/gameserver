@@ -690,11 +690,18 @@ defmodule GameserverWeb.WorldLiveTest do
 
       # Wait past the cooldown. No other broadcasts fire, so the LiveView must
       # self-refresh to reflect the now-ready button.
-      Process.sleep(150)
+      Process.sleep(300)
 
       refute has_element?(
                view,
                ~s(#ability-bar button[data-ability-id="melee_strike"][disabled])
+             )
+
+      # Once ready the button shows the ability name again, not a countdown digit.
+      assert has_element?(
+               view,
+               ~s(#ability-bar button[data-ability-id="melee_strike"]),
+               "Melee Strike"
              )
     end
 
@@ -734,6 +741,53 @@ defmodule GameserverWeb.WorldLiveTest do
       assert has_element?(
                view,
                ~s(#ability-bar button[data-ability-id="upper_cut"][disabled])
+             )
+    end
+
+    test "button shows remaining seconds while on cooldown", %{conn: conn} do
+      {:ok, user} = User.new("counter")
+      {:ok, _pos} = WorldServer.join_user(user)
+
+      {:ok, view, _html} = live(conn, ~p"/world?user_id=#{user.id}")
+
+      # 1500ms remaining → ceil to 2 seconds
+      {:ok, _} =
+        EntityServer.update_entity(user.id, fn entity ->
+          %{entity | cooldowns: Cooldowns.start(entity.cooldowns, :melee_strike, 1500)}
+        end)
+
+      assert has_element?(
+               view,
+               ~s(#ability-bar button[data-ability-id="melee_strike"]),
+               "2"
+             )
+    end
+
+    test "remaining seconds decrement over time", %{conn: conn} do
+      {:ok, user} = User.new("ticker")
+      {:ok, _pos} = WorldServer.join_user(user)
+
+      {:ok, view, _html} = live(conn, ~p"/world?user_id=#{user.id}")
+
+      # 2500ms cooldown → starts at ceil(2500/1000) = 3
+      {:ok, _} =
+        EntityServer.update_entity(user.id, fn entity ->
+          %{entity | cooldowns: Cooldowns.start(entity.cooldowns, :melee_strike, 2500)}
+        end)
+
+      assert has_element?(
+               view,
+               ~s(#ability-bar button[data-ability-id="melee_strike"]),
+               "3"
+             )
+
+      # After 1500ms ~1000ms remain → ceil = 1
+      Process.sleep(1500)
+
+      assert has_element?(
+               view,
+               ~s(#ability-bar button[data-ability-id="melee_strike"]),
+               "1"
              )
     end
   end

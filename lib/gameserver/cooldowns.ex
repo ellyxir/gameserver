@@ -49,6 +49,21 @@ defmodule Gameserver.Cooldowns do
   end
 
   @doc """
+  Returns the number of milliseconds remaining on a cooldown, or `0` if it's
+  ready or has never been started.
+  """
+  @spec remaining_ms(t(), id()) :: non_neg_integer()
+  def remaining_ms(%__MODULE__{timers: timers}, id) do
+    case Map.get(timers, id) do
+      nil ->
+        0
+
+      {started_at, duration} ->
+        max(started_at + duration - System.monotonic_time(:millisecond), 0)
+    end
+  end
+
+  @doc """
   Returns the number of milliseconds until the next active cooldown expires,
   or `nil` if all cooldowns are already ready.
   """

@@ -79,7 +79,8 @@
         <%= for slot <- 0..4 do %>
           <% ability = Enum.at(@abilities, slot) %>
           <%= if ability do %>
-            <% ready = Map.get(@ability_ready, ability.id, true) %>
+            <% seconds = Map.get(@ability_seconds_remaining, ability.id, 0) %>
+            <% ready = seconds == 0 %>
             <button
               type="button"
               phx-click="use_ability"
@@ -95,7 +96,11 @@
               ]}
               title={ability.name}
             >
-              {ability.name}
+              <%= if ready do %>
+                {ability.name}
+              <% else %>
+                {seconds}
+              <% end %>
             </button>
           <% else %>
             <div class="flex-1 h-8 bg-gray-900 rounded"></div>

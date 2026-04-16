@@ -52,7 +52,7 @@ defmodule GameserverWeb.WorldLive do
              player_stats: entity.stats,
              player_cooldowns: entity.cooldowns,
              abilities: abilities,
-             ability_ready: %{},
+             ability_seconds_remaining: %{},
              cooldown_refresh_ref: nil,
              target_id: nil
            )
@@ -218,27 +218,38 @@ defmodule GameserverWeb.WorldLive do
     end
   end
 
-  # Scheduling buffer in ms — a small delay past the cooldown's scheduled end
-  # so that `Cooldowns.ready?/2` reliably reports true when we re-render.
+  # Tick interval while any cooldown is active. Short enough that the displayed
+  # second count looks responsive, long enough to keep render churn modest.
+  @cooldown_tick_ms 250
+
+  # Small buffer past a cooldown's scheduled end so `Cooldowns.ready?/2` reliably
+  # reports true when we re-render after the final tick.
   @refresh_buffer_ms 10
 
-  # Recomputes the per-ability ready map from the current cooldowns and reschedules
-  # the next self-refresh. Cancels any outstanding refresh first so we don't
-  # accumulate timers across rapid `:entity_updated` broadcasts.
+  # Recomputes the per-ability "seconds remaining" map from the current cooldowns
+  # and reschedules the next self-refresh. Storing the rounded-up second count
+  # (rather than raw ms) means the assign only changes when the displayed digit
+  # actually changes, so LiveView skips the diff on intermediate ticks.
+  # Cancels any outstanding refresh first so we don't accumulate timers across
+  # rapid `:entity_updated` broadcasts.
   @spec refresh_cooldown_state(Phoenix.LiveView.Socket.t()) :: Phoenix.LiveView.Socket.t()
   defp refresh_cooldown_state(socket) do
     cooldowns = socket.assigns.player_cooldowns
 
-    ability_ready =
+    ability_seconds_remaining =
       Map.new(socket.assigns.abilities, fn %Ability{id: id} ->
-        {id, Cooldowns.ready?(cooldowns, id)}
+        {id, ms_to_ceil_seconds(Cooldowns.remaining_ms(cooldowns, id))}
       end)
 
     socket
     |> cancel_cooldown_refresh()
-    |> assign(:ability_ready, ability_ready)
+    |> assign(:ability_seconds_remaining, ability_seconds_remaining)
     |> schedule_next_refresh()
   end
+
+  @spec ms_to_ceil_seconds(non_neg_integer()) :: non_neg_integer()
+  defp ms_to_ceil_seconds(0), do: 0
+  defp ms_to_ceil_seconds(ms) when ms > 0, do: div(ms - 1, 1000) + 1
 
   @spec cancel_cooldown_refresh(Phoenix.LiveView.Socket.t()) :: Phoenix.LiveView.Socket.t()
   defp cancel_cooldown_refresh(socket) do
@@ -255,6 +266,10 @@ defmodule GameserverWeb.WorldLive do
     end
   end
 
+  # Picks the shorter of the next-ready time and a fixed tick interval. The
+  # tick keeps the displayed second-count moving while a long cooldown burns
+  # down; the next-ready bound makes sure we wake exactly when the last
+  # cooldown clears.
   @spec schedule_next_refresh(Phoenix.LiveView.Socket.t()) :: Phoenix.LiveView.Socket.t()
   defp schedule_next_refresh(socket) do
     case Cooldowns.next_ready_in_ms(socket.assigns.player_cooldowns) do
@@ -262,7 +277,8 @@ defmodule GameserverWeb.WorldLive do
         socket
 
       ms when is_integer(ms) ->
-        ref = Process.send_after(self(), :refresh_cooldowns, ms + @refresh_buffer_ms)
+        delay = min(ms + @refresh_buffer_ms, @cooldown_tick_ms)
+        ref = Process.send_after(self(), :refresh_cooldowns, delay)
         assign(socket, :cooldown_refresh_ref, ref)
     end
   end
