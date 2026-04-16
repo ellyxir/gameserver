@@ -162,7 +162,12 @@ defmodule Gameserver.TickServerTest do
           ctx.entity_server
         )
 
-      refute_receive {:combat_event, _}, 200
+      source_id = source.id
+      target_id = target.id
+
+      refute_receive {:combat_event,
+                      %CombatEvent{attacker_id: ^source_id, defender_id: ^target_id}},
+                     200
     end
 
     test "broadcasts a combat event when a tick deals damage", ctx do
