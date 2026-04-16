@@ -19,7 +19,7 @@ defmodule Gameserver.Ability do
           id: atom(),
           name: String.t(),
           tags: [tag()],
-          range: pos_integer(),
+          range: non_neg_integer(),
           cooldown_ms: pos_integer(),
           effects: [effect_entry()]
         }

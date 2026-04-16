@@ -4,6 +4,7 @@ defmodule Gameserver.CombatServerTest do
   use Mimic
 
   alias Gameserver.CombatServer
+  alias Gameserver.Cooldowns
   alias Gameserver.Entity
   alias Gameserver.EntityServer
   alias Gameserver.Map, as: GameMap
@@ -127,22 +128,22 @@ defmodule Gameserver.CombatServerTest do
     end
   end
 
-  describe "attack/4" do
-    test "adjacent attack applies damage and returns cooldown", ctx do
+  describe "use_ability/4" do
+    test "adjacent use_ability applies damage and returns cooldown", ctx do
       {:ok, user} = User.new("alice")
       {:ok, _pos} = WorldServer.join_user(user, ctx.world_server)
       mob = Entity.new(name: "goblin", type: :mob, pos: spawn_adjacent_pos(ctx.world_server))
       {:ok, _pos} = WorldServer.join_entity(mob, ctx.world_server)
 
-      assert {:ok, {:attack, cooldown_ms}} =
-               CombatServer.attack(user.id, mob.id, :melee_strike, ctx.combat_server)
+      assert {:ok, {:use_ability, cooldown_ms}} =
+               CombatServer.use_ability(user.id, mob.id, :melee_strike, ctx.combat_server)
 
       assert is_integer(cooldown_ms) and cooldown_ms > 0
 
-      {:ok, defender} = EntityServer.get_entity(mob.id, ctx.entity_server)
-      defender_hp = Stat.effective(defender.stats.hp, defender.stats)
+      {:ok, target} = EntityServer.get_entity(mob.id, ctx.entity_server)
+      target_hp = Stat.effective(target.stats.hp, target.stats)
       # default hp is 10, melee_strike base damage is 1
-      assert defender_hp == 9
+      assert target_hp == 9
     end
 
     test "uses the ability specified by ability_id", ctx do
@@ -152,31 +153,31 @@ defmodule Gameserver.CombatServerTest do
       {:ok, _pos} = WorldServer.join_entity(mob, ctx.world_server)
 
       # upper_cut has base damage 3, vs melee_strike's 1
-      {:ok, {:attack, cooldown_ms}} =
-        CombatServer.attack(user.id, mob.id, :upper_cut, ctx.combat_server)
+      {:ok, {:use_ability, cooldown_ms}} =
+        CombatServer.use_ability(user.id, mob.id, :upper_cut, ctx.combat_server)
 
       assert cooldown_ms == 1500
 
-      {:ok, defender} = EntityServer.get_entity(mob.id, ctx.entity_server)
-      assert Stat.effective(defender.stats.hp, defender.stats) == 7
+      {:ok, target} = EntityServer.get_entity(mob.id, ctx.entity_server)
+      assert Stat.effective(target.stats.hp, target.stats) == 7
     end
 
-    test "returns not_found when attacker does not exist", ctx do
+    test "returns not_found when source does not exist", ctx do
       mob = Entity.new(name: "goblin", type: :mob, pos: spawn_adjacent_pos(ctx.world_server))
       {:ok, _pos} = WorldServer.join_entity(mob, ctx.world_server)
       fake_id = UUID.generate()
 
       assert {:error, :not_found} =
-               CombatServer.attack(fake_id, mob.id, :melee_strike, ctx.combat_server)
+               CombatServer.use_ability(fake_id, mob.id, :melee_strike, ctx.combat_server)
     end
 
-    test "returns not_found when defender does not exist", ctx do
+    test "returns not_found when target does not exist", ctx do
       {:ok, user} = User.new("alice")
       {:ok, _pos} = WorldServer.join_user(user, ctx.world_server)
       fake_id = UUID.generate()
 
       assert {:error, :not_found} =
-               CombatServer.attack(user.id, fake_id, :melee_strike, ctx.combat_server)
+               CombatServer.use_ability(user.id, fake_id, :melee_strike, ctx.combat_server)
     end
 
     test "diagonal adjacency counts as in range", ctx do
@@ -191,8 +192,8 @@ defmodule Gameserver.CombatServerTest do
       mob = Entity.new(name: "goblin", type: :mob, pos: diag_pos)
       {:ok, _pos} = WorldServer.join_entity(mob, ctx.world_server)
 
-      assert {:ok, {:attack, _cooldown_ms}} =
-               CombatServer.attack(user.id, mob.id, :melee_strike, ctx.combat_server)
+      assert {:ok, {:use_ability, _cooldown_ms}} =
+               CombatServer.use_ability(user.id, mob.id, :melee_strike, ctx.combat_server)
     end
 
     test "broadcasts entity_updated with reduced hp", ctx do
@@ -206,7 +207,7 @@ defmodule Gameserver.CombatServerTest do
       assert_receive {:entity_created, _}
       assert_receive {:entity_created, _}
 
-      {:ok, _} = CombatServer.attack(user.id, mob.id, :melee_strike, ctx.combat_server)
+      {:ok, _} = CombatServer.use_ability(user.id, mob.id, :melee_strike, ctx.combat_server)
 
       assert_receive {:entity_updated, updated_mob}
       assert updated_mob.id == mob.id
@@ -222,10 +223,10 @@ defmodule Gameserver.CombatServerTest do
       {:ok, _pos} = WorldServer.join_entity(mob, ctx.world_server)
 
       assert {:error, :out_of_range} =
-               CombatServer.attack(user.id, mob.id, :melee_strike, ctx.combat_server)
+               CombatServer.use_ability(user.id, mob.id, :melee_strike, ctx.combat_server)
     end
 
-    test "returns target_dead when defender is already dead", ctx do
+    test "returns target_dead when target is already dead", ctx do
       {:ok, user} = User.new("alice")
       {:ok, _pos} = WorldServer.join_user(user, ctx.world_server)
       mob = Entity.new(name: "goblin", type: :mob, pos: spawn_adjacent_pos(ctx.world_server))
@@ -233,7 +234,7 @@ defmodule Gameserver.CombatServerTest do
       {:ok, _pos} = WorldServer.join_entity(mob, ctx.world_server)
 
       assert {:error, :target_dead} =
-               CombatServer.attack(user.id, mob.id, :melee_strike, ctx.combat_server)
+               CombatServer.use_ability(user.id, mob.id, :melee_strike, ctx.combat_server)
     end
 
     test "does not broadcast combat event on failed attack", ctx do
@@ -243,7 +244,7 @@ defmodule Gameserver.CombatServerTest do
       fake_id = UUID.generate()
 
       {:error, :not_found} =
-        CombatServer.attack(user.id, fake_id, :melee_strike, ctx.combat_server)
+        CombatServer.use_ability(user.id, fake_id, :melee_strike, ctx.combat_server)
 
       refute_receive {:combat_event, _}
     end
@@ -255,7 +256,7 @@ defmodule Gameserver.CombatServerTest do
       mob = Entity.new(name: "goblin", type: :mob, pos: spawn_adjacent_pos(ctx.world_server))
       {:ok, _pos} = WorldServer.join_entity(mob, ctx.world_server)
 
-      {:ok, _} = CombatServer.attack(user.id, mob.id, :melee_strike, ctx.combat_server)
+      {:ok, _} = CombatServer.use_ability(user.id, mob.id, :melee_strike, ctx.combat_server)
 
       assert_receive {:combat_event, event}
       assert event.attacker_id == user.id
@@ -264,7 +265,7 @@ defmodule Gameserver.CombatServerTest do
       assert event.defender_hp == 9
     end
 
-    test "defender is marked dead when hp reaches zero", ctx do
+    test "target is marked dead when hp reaches zero", ctx do
       {:ok, user} = User.new("alice")
       {:ok, _pos} = WorldServer.join_user(user, ctx.world_server)
 
@@ -283,11 +284,11 @@ defmodule Gameserver.CombatServerTest do
 
       {:ok, _pos} = WorldServer.join_entity(mob, ctx.world_server)
 
-      {:ok, _} = CombatServer.attack(user.id, mob.id, :melee_strike, ctx.combat_server)
+      {:ok, _} = CombatServer.use_ability(user.id, mob.id, :melee_strike, ctx.combat_server)
 
-      {:ok, defender} = EntityServer.get_entity(mob.id, ctx.entity_server)
-      assert defender.stats.dead
-      assert Stat.effective(defender.stats.hp, defender.stats) == 0
+      {:ok, target} = EntityServer.get_entity(mob.id, ctx.entity_server)
+      assert target.stats.dead
+      assert Stat.effective(target.stats.hp, target.stats) == 0
     end
 
     test "returns cooldown error when ability is on cooldown", ctx do
@@ -296,10 +297,81 @@ defmodule Gameserver.CombatServerTest do
       mob = Entity.new(name: "goblin", type: :mob, pos: spawn_adjacent_pos(ctx.world_server))
       {:ok, _pos} = WorldServer.join_entity(mob, ctx.world_server)
 
-      {:ok, _} = CombatServer.attack(user.id, mob.id, :melee_strike, ctx.combat_server)
+      {:ok, _} = CombatServer.use_ability(user.id, mob.id, :melee_strike, ctx.combat_server)
 
       assert {:error, :on_cooldown} =
-               CombatServer.attack(user.id, mob.id, :melee_strike, ctx.combat_server)
+               CombatServer.use_ability(user.id, mob.id, :melee_strike, ctx.combat_server)
+    end
+
+    test "self-cast buff applies to source", ctx do
+      {:ok, user} = User.new("alice")
+      {:ok, _pos} = WorldServer.join_user(user, ctx.world_server)
+
+      {:ok, source_before} = EntityServer.get_entity(user.id, ctx.entity_server)
+      str_before = Stat.effective(source_before.stats.str, source_before.stats)
+
+      assert {:ok, {:use_ability, _cooldown_ms}} =
+               CombatServer.use_ability(user.id, user.id, :battle_shout, ctx.combat_server)
+
+      {:ok, source_after} = EntityServer.get_entity(user.id, ctx.entity_server)
+      str_after = Stat.effective(source_after.stats.str, source_after.stats)
+      assert str_after == str_before + 3
+
+      # cooldown is started
+      refute Cooldowns.ready?(source_after.cooldowns, :battle_shout)
+    end
+
+    test "self-cast fortify increases con", ctx do
+      {:ok, user} = User.new("alice")
+      {:ok, _pos} = WorldServer.join_user(user, ctx.world_server)
+
+      {:ok, source_before} = EntityServer.get_entity(user.id, ctx.entity_server)
+      con_before = Stat.effective(source_before.stats.con, source_before.stats)
+
+      {:ok, _} = CombatServer.use_ability(user.id, user.id, :fortify, ctx.combat_server)
+
+      {:ok, source_after} = EntityServer.get_entity(user.id, ctx.entity_server)
+      con_after = Stat.effective(source_after.stats.con, source_after.stats)
+      assert con_after == con_before + 2
+    end
+
+    test "self-cast fails with missing_ability when source does not know it", ctx do
+      {:ok, user} = User.new("alice")
+      {:ok, _pos} = WorldServer.join_user(user, ctx.world_server)
+
+      # strip all abilities from the user
+      {:ok, _} =
+        EntityServer.update_entity(
+          user.id,
+          fn entity -> %{entity | abilities: []} end,
+          ctx.entity_server
+        )
+
+      assert {:error, :missing_ability} =
+               CombatServer.use_ability(user.id, user.id, :battle_shout, ctx.combat_server)
+    end
+
+    test "self-cast fails with target_dead when source is dead", ctx do
+      {:ok, user} = User.new("alice")
+      {:ok, _pos} = WorldServer.join_user(user, ctx.world_server)
+
+      {:ok, _} =
+        EntityServer.update_entity(
+          user.id,
+          fn entity -> %{entity | stats: %{entity.stats | dead: true}} end,
+          ctx.entity_server
+        )
+
+      assert {:error, :target_dead} =
+               CombatServer.use_ability(user.id, user.id, :battle_shout, ctx.combat_server)
+    end
+
+    test "self-cast of a range-1 ability succeeds (same position is in range)", ctx do
+      {:ok, user} = User.new("alice")
+      {:ok, _pos} = WorldServer.join_user(user, ctx.world_server)
+
+      assert {:ok, _} =
+               CombatServer.use_ability(user.id, user.id, :melee_strike, ctx.combat_server)
     end
 
     test "different abilities have independent cooldowns", ctx do
@@ -308,8 +380,8 @@ defmodule Gameserver.CombatServerTest do
       mob = Entity.new(name: "goblin", type: :mob, pos: spawn_adjacent_pos(ctx.world_server))
       {:ok, _pos} = WorldServer.join_entity(mob, ctx.world_server)
 
-      {:ok, _} = CombatServer.attack(user.id, mob.id, :melee_strike, ctx.combat_server)
-      assert {:ok, _} = CombatServer.attack(user.id, mob.id, :upper_cut, ctx.combat_server)
+      {:ok, _} = CombatServer.use_ability(user.id, mob.id, :melee_strike, ctx.combat_server)
+      assert {:ok, _} = CombatServer.use_ability(user.id, mob.id, :upper_cut, ctx.combat_server)
     end
 
     test "ability is usable again after cooldown expires", ctx do
@@ -340,9 +412,11 @@ defmodule Gameserver.CombatServerTest do
       mob = Entity.new(name: "goblin", type: :mob, pos: spawn_adjacent_pos(ctx.world_server))
       {:ok, _pos} = WorldServer.join_entity(mob, ctx.world_server)
 
-      {:ok, _} = CombatServer.attack(user.id, mob.id, :quick_strike, ctx.combat_server)
+      {:ok, _} = CombatServer.use_ability(user.id, mob.id, :quick_strike, ctx.combat_server)
       Process.sleep(60)
-      assert {:ok, _} = CombatServer.attack(user.id, mob.id, :quick_strike, ctx.combat_server)
+
+      assert {:ok, _} =
+               CombatServer.use_ability(user.id, mob.id, :quick_strike, ctx.combat_server)
     end
   end
 end

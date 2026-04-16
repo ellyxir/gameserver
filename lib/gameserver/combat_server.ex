@@ -52,16 +52,21 @@ defmodule Gameserver.CombatServer do
   def combat_topic, do: @combat_topic
 
   @doc """
-  Attacks defender with attacker. Validates adjacency, applies damage.
+  Has `source_id` use `ability_id` on `target_id`. `source_id` and `target_id`
+  may be equal for self-cast abilities (e.g. buffs with range 0).
 
-  Returns `{:ok, {:attack, cooldown_ms}}` on success.
+  Validates that the source knows the ability, the ability is off cooldown, the
+  target is alive and within range, then runs the ability's effects on the
+  target and starts the cooldown on the source.
+
+  Returns `{:ok, {:use_ability, cooldown_ms}}` on success.
   """
-  @spec attack(attacker :: UUID.t(), defender :: UUID.t(), ability :: atom(), GenServer.server()) ::
+  @spec use_ability(source :: UUID.t(), target :: UUID.t(), ability :: atom(), GenServer.server()) ::
           {:ok, Cooldowns.cooldown()}
-          | {:error, :not_found | :out_of_range | :missing_ability | :on_cooldown}
-  def attack(attacker_id, defender_id, ability_id, server \\ __MODULE__)
+          | {:error, :not_found | :out_of_range | :missing_ability | :on_cooldown | :target_dead}
+  def use_ability(source_id, target_id, ability_id, server \\ __MODULE__)
       when is_atom(ability_id) do
-    GenServer.call(server, {:attack, attacker_id, defender_id, ability_id})
+    GenServer.call(server, {:use_ability, source_id, target_id, ability_id})
   end
 
   # Server callbacks
@@ -75,37 +80,37 @@ defmodule Gameserver.CombatServer do
 
   @impl GenServer
   def handle_call(
-        {:attack, attacker_id, defender_id, ability_id},
+        {:use_ability, source_id, target_id, ability_id},
         _from,
         %__MODULE__{entity_server: entity_server} = state
       )
       when is_atom(ability_id) do
-    with {:ok, attacker} <- EntityServer.get_entity(attacker_id, entity_server),
-         {:ok, defender} <- EntityServer.get_entity(defender_id, entity_server),
-         :ok <- check_alive(defender),
+    with {:ok, source} <- EntityServer.get_entity(source_id, entity_server),
+         {:ok, target} <- EntityServer.get_entity(target_id, entity_server),
+         :ok <- check_alive(target),
          {:ok, ability} <- Abilities.get(ability_id),
-         {:has_ability, true} <- {:has_ability, ability_id in attacker.abilities},
-         :ok <- Cooldowns.check(attacker.cooldowns, ability_id),
-         :ok <- check_adjacent(attacker, defender, ability.range) do
-      defender_hp_before = Stat.effective(defender.stats.hp, defender.stats)
+         {:has_ability, true} <- {:has_ability, ability_id in source.abilities},
+         :ok <- Cooldowns.check(source.cooldowns, ability_id),
+         :ok <- check_adjacent(source, target, ability.range) do
+      target_hp_before = Stat.effective(target.stats.hp, target.stats)
 
-      transforms = execute_ability(ability, attacker, defender)
+      transforms = execute_ability(ability, source, target)
       update_fn = build_entity_update_fn(transforms)
 
-      {:ok, defender} =
+      {:ok, target} =
         EntityServer.update_entity(
-          defender_id,
+          target_id,
           update_fn,
           entity_server
         )
 
-      start_cooldown(attacker_id, ability, entity_server)
+      start_cooldown(source_id, ability, entity_server)
 
-      defender_hp_after = Stat.effective(defender.stats.hp, defender.stats)
-      damage_taken = defender_hp_before - defender_hp_after
-      broadcast_combat_event(attacker, defender, damage_taken, defender_hp_after)
+      target_hp_after = Stat.effective(target.stats.hp, target.stats)
+      damage_taken = target_hp_before - target_hp_after
+      broadcast_combat_event(source, target, damage_taken, target_hp_after)
 
-      {:reply, {:ok, {:attack, ability.cooldown_ms}}, state}
+      {:reply, {:ok, {:use_ability, ability.cooldown_ms}}, state}
     else
       {:error, :cooldown} -> {:reply, {:error, :on_cooldown}, state}
       {:error, reason} -> {:reply, {:error, reason}, state}
@@ -169,7 +174,7 @@ defmodule Gameserver.CombatServer do
   defp check_alive(%Entity{stats: %{dead: false}}), do: :ok
   defp check_alive(%Entity{stats: %{dead: true}}), do: {:error, :target_dead}
 
-  @spec check_adjacent(Entity.t(), Entity.t(), range :: pos_integer()) ::
+  @spec check_adjacent(Entity.t(), Entity.t(), range :: non_neg_integer()) ::
           :ok | {:error, :out_of_range}
   defp check_adjacent(
          %Entity{pos: {a_x, a_y}},
@@ -185,14 +190,14 @@ defmodule Gameserver.CombatServer do
 
   @spec start_cooldown(UUID.t(), Ability.t(), GenServer.server()) :: :ok
   defp start_cooldown(
-         attacker_id,
+         source_id,
          %Ability{id: ability_id, cooldown_ms: cooldown_ms},
          entity_server
        ) do
-    # Attacker may have been removed between the defender update and now.
+    # Source may have been removed between the target update and now.
     # Best-effort: if the entity is gone, skip the cooldown.
     case EntityServer.update_entity(
-           attacker_id,
+           source_id,
            fn entity ->
              %{entity | cooldowns: Cooldowns.start(entity.cooldowns, ability_id, cooldown_ms)}
            end,
