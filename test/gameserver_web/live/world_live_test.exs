@@ -615,20 +615,26 @@ defmodule GameserverWeb.WorldLiveTest do
       {:ok, _pos} = WorldServer.join_user(user)
       {:ok, view, _html} = live(conn, ~p"/world?user_id=#{user.id}")
 
-      # walk north until hitting a wall
+      # walk north until hitting a wall. iterate map.height times so that any
+      # spawn position is guaranteed to walk off the top of the map within the
+      # loop, regardless of the seed used to generate the map.
       cooldown = WorldServer.move_cooldown_ms() + 1
+      map = WorldServer.get_map()
 
-      assert :ok =
-               Enum.reduce_while(1..20, nil, fn _, _ ->
-                 case WorldServer.move(user.id, :north) do
-                   {:ok, _} ->
-                     Process.sleep(cooldown)
-                     {:cont, nil}
+      walk_result =
+        Enum.reduce_while(1..map.height, nil, fn _, _ ->
+          case WorldServer.move(user.id, :north) do
+            {:ok, _} ->
+              Process.sleep(cooldown)
+              {:cont, nil}
 
-                   {:error, _} ->
-                     {:halt, :ok}
-                 end
-               end)
+            {:error, _} ->
+              {:halt, :ok}
+          end
+        end)
+
+      assert walk_result == :ok,
+             "expected to hit a wall within #{map.height} north moves but didn't. map seed: #{map.seed}"
 
       # now adjacent to a wall — clicking north should not move
       {:ok, {cx, cy}} = WorldServer.get_position(user.id)
