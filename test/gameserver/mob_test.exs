@@ -220,11 +220,40 @@ defmodule Gameserver.MobTest do
       Process.sleep(WorldServer.move_cooldown_ms() + 10)
       {:ok, _} = WorldServer.move(player_id, direction, ctx.world_server)
 
-      send(pid, :attack_target)
-      state = :sys.get_state(pid)
+      # The mob's auto-fired :attack_target (from the combat event) already
+      # set a melee_strike cooldown by hitting the player while still in range.
+      # Wait for the mob's own retry to fire after that cooldown elapses, hit
+      # the adjacency check, see the player is out of range, and clear aggro.
+      state = wait_until(2500, fn -> aggro_cleared(pid) end)
 
+      assert state, "expected aggro to clear within 2.5s, but it did not"
       assert state.aggro_target == nil
       assert state.attack_timer == nil
+    end
+  end
+
+  defp aggro_cleared(pid) do
+    state = :sys.get_state(pid)
+    if state.aggro_target == nil, do: state
+  end
+
+  defp wait_until(timeout_ms, fun) do
+    deadline = System.monotonic_time(:millisecond) + timeout_ms
+    do_wait_until(deadline, fun)
+  end
+
+  defp do_wait_until(deadline, fun) do
+    case fun.() do
+      nil ->
+        if System.monotonic_time(:millisecond) > deadline do
+          nil
+        else
+          Process.sleep(50)
+          do_wait_until(deadline, fun)
+        end
+
+      result ->
+        result
     end
   end
 
