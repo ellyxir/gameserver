@@ -34,7 +34,6 @@ defmodule Gameserver.CombatServer do
   @doc """
   Starts the combat server. Accepts `:name`, `:entity_server`, and `:world_server` options.
   """
-  @typedoc false
   @typep option() ::
            {:name, GenServer.name() | nil}
            | {:entity_server, GenServer.server()}
@@ -58,7 +57,8 @@ defmodule Gameserver.CombatServer do
   Returns `{:ok, {:attack, cooldown_ms}}` on success.
   """
   @spec attack(attacker :: UUID.t(), defender :: UUID.t(), ability :: atom(), GenServer.server()) ::
-          {:ok, Cooldowns.cooldown()} | {:error, :not_found | :out_of_range | :missing_ability}
+          {:ok, Cooldowns.cooldown()}
+          | {:error, :not_found | :out_of_range | :missing_ability | :on_cooldown}
   def attack(attacker_id, defender_id, ability_id, server \\ __MODULE__)
       when is_atom(ability_id) do
     GenServer.call(server, {:attack, attacker_id, defender_id, ability_id})
@@ -85,6 +85,7 @@ defmodule Gameserver.CombatServer do
          :ok <- check_alive(defender),
          {:ok, ability} <- Abilities.get(ability_id),
          {:has_ability, true} <- {:has_ability, ability_id in attacker.abilities},
+         :ok <- Cooldowns.check(attacker.cooldowns, ability_id),
          :ok <- check_adjacent(attacker, defender, ability.range) do
       defender_hp_before = Stat.effective(defender.stats.hp, defender.stats)
 
@@ -98,12 +99,15 @@ defmodule Gameserver.CombatServer do
           entity_server
         )
 
+      start_cooldown(attacker_id, ability, entity_server)
+
       defender_hp_after = Stat.effective(defender.stats.hp, defender.stats)
       damage_taken = defender_hp_before - defender_hp_after
       broadcast_combat_event(attacker, defender, damage_taken, defender_hp_after)
 
       {:reply, {:ok, {:attack, ability.cooldown_ms}}, state}
     else
+      {:error, :cooldown} -> {:reply, {:error, :on_cooldown}, state}
       {:error, reason} -> {:reply, {:error, reason}, state}
       {:has_ability, false} -> {:reply, {:error, :missing_ability}, state}
     end
@@ -176,6 +180,26 @@ defmodule Gameserver.CombatServer do
       :ok
     else
       {:error, :out_of_range}
+    end
+  end
+
+  @spec start_cooldown(UUID.t(), Ability.t(), GenServer.server()) :: :ok
+  defp start_cooldown(
+         attacker_id,
+         %Ability{id: ability_id, cooldown_ms: cooldown_ms},
+         entity_server
+       ) do
+    # Attacker may have been removed between the defender update and now.
+    # Best-effort: if the entity is gone, skip the cooldown.
+    case EntityServer.update_entity(
+           attacker_id,
+           fn entity ->
+             %{entity | cooldowns: Cooldowns.start(entity.cooldowns, ability_id, cooldown_ms)}
+           end,
+           entity_server
+         ) do
+      {:ok, _} -> :ok
+      {:error, :not_found} -> :ok
     end
   end
 end

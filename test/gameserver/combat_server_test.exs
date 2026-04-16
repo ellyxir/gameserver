@@ -1,6 +1,7 @@
 defmodule Gameserver.CombatServerTest do
   # set async to false due to pubsub messages mixing during tests
   use ExUnit.Case, async: false
+  use Mimic
 
   alias Gameserver.CombatServer
   alias Gameserver.Entity
@@ -287,6 +288,61 @@ defmodule Gameserver.CombatServerTest do
       {:ok, defender} = EntityServer.get_entity(mob.id, ctx.entity_server)
       assert defender.stats.dead
       assert Stat.effective(defender.stats.hp, defender.stats) == 0
+    end
+
+    test "returns cooldown error when ability is on cooldown", ctx do
+      {:ok, user} = User.new("alice")
+      {:ok, _pos} = WorldServer.join_user(user, ctx.world_server)
+      mob = Entity.new(name: "goblin", type: :mob, pos: spawn_adjacent_pos(ctx.world_server))
+      {:ok, _pos} = WorldServer.join_entity(mob, ctx.world_server)
+
+      {:ok, _} = CombatServer.attack(user.id, mob.id, :melee_strike, ctx.combat_server)
+
+      assert {:error, :on_cooldown} =
+               CombatServer.attack(user.id, mob.id, :melee_strike, ctx.combat_server)
+    end
+
+    test "different abilities have independent cooldowns", ctx do
+      {:ok, user} = User.new("alice")
+      {:ok, _pos} = WorldServer.join_user(user, ctx.world_server)
+      mob = Entity.new(name: "goblin", type: :mob, pos: spawn_adjacent_pos(ctx.world_server))
+      {:ok, _pos} = WorldServer.join_entity(mob, ctx.world_server)
+
+      {:ok, _} = CombatServer.attack(user.id, mob.id, :melee_strike, ctx.combat_server)
+      assert {:ok, _} = CombatServer.attack(user.id, mob.id, :upper_cut, ctx.combat_server)
+    end
+
+    test "ability is usable again after cooldown expires", ctx do
+      set_mimic_global()
+
+      quick_strike =
+        {:ok,
+         %Gameserver.Ability{
+           id: :quick_strike,
+           name: "Quick Strike",
+           range: 1,
+           cooldown_ms: 50,
+           effects: [{Gameserver.Effects.DirectDmg, %{base: 1}}]
+         }}
+
+      stub(Gameserver.Abilities, :get, fn :quick_strike -> quick_strike end)
+
+      {:ok, user} = User.new("alice")
+      {:ok, _pos} = WorldServer.join_user(user, ctx.world_server)
+
+      # add :quick_strike to player's abilities
+      EntityServer.update_entity(
+        user.id,
+        fn entity -> %{entity | abilities: [:quick_strike | entity.abilities]} end,
+        ctx.entity_server
+      )
+
+      mob = Entity.new(name: "goblin", type: :mob, pos: spawn_adjacent_pos(ctx.world_server))
+      {:ok, _pos} = WorldServer.join_entity(mob, ctx.world_server)
+
+      {:ok, _} = CombatServer.attack(user.id, mob.id, :quick_strike, ctx.combat_server)
+      Process.sleep(60)
+      assert {:ok, _} = CombatServer.attack(user.id, mob.id, :quick_strike, ctx.combat_server)
     end
   end
 end
