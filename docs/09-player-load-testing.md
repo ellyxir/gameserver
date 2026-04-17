@@ -46,7 +46,7 @@ phoenix dev mode adds `data-phx-loc` attributes to HTML tags which
 changes attribute ordering. the token parser handles this by not
 assuming a fixed order between tag attributes.
 
-## results
+## results - single layer
 
 default 50x50 map, 35 mobs, 30 second duration, move interval at
 server cooldown (150ms). all runs on the same machine.
@@ -100,6 +100,37 @@ the two-layer rendering split described in
 map layer (only re-renders when `@map` changes) from the entity layer
 (iterates entities, not tiles). this would change the per-move render
 cost from O(map_area) to O(entity_count).
+
+## results - two layer (issue #122)
+
+same setup. the map template was split into a static map layer
+(iterates @map_cells) and an absolutely-positioned entity layer
+(iterates @entities). liveview skips the map comprehension entirely
+when only entities change.
+
+| metric | 10 players | 20 players | 30 players |
+|---|---|---|---|
+| renders | 518 | 1,421 | 3,656 |
+| avg render | 1.15 ms | 1.93 ms | 3.06 ms |
+| p50 render | 262 us | 733 us | 1.84 ms |
+| p95 render | 5.93 ms | 6.89 ms | 9.79 ms |
+| p99 render | 11.71 ms | 9.31 ms | 12.83 ms |
+| max render | 16.94 ms | 16.02 ms | 18.57 ms |
+| avg round-trip | 1.02 ms | 1.36 ms | 2.32 ms |
+| p50 round-trip | 714 us | 927 us | 1.72 ms |
+| p95 round-trip | 1.25 ms | 4.58 ms | 6.68 ms |
+| p99 round-trip | 10.91 ms | 10.92 ms | 13.33 ms |
+| max round-trip | 24.01 ms | 25.32 ms | 31.66 ms |
+| scheduler util | avg 0.5%, peak 0.6% | avg 2.5%, peak 2.9% | avg 12.6%, peak 14.7% |
+| memory | avg 118.9 MB, peak 132.0 MB | avg 167.7 MB, peak 172.1 MB | avg 211.8 MB, peak 219.4 MB |
+| mailbox depth | all zero | all zero | all zero |
+
+at 20 players, avg render dropped from 32.9ms to 1.93ms (17x).
+avg round-trip dropped from 6.8 seconds to 1.4ms. the mailbox
+backup problem is gone, liveview processes drain instantly.
+
+at 30 players, avg round-trip is 2.3ms vs 12 seconds before.
+scheduler utilization dropped from 61% to 13%.
 
 ## how to reproduce
 
