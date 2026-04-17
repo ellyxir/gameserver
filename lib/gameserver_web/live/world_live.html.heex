@@ -27,7 +27,8 @@
           class="absolute inset-0 pointer-events-none"
           style={"display: grid; grid-template-columns: repeat(#{@map_width}, 1ch); grid-template-rows: repeat(#{@map_height}, 1em);"}
         >
-          <%= for {id, %{pos: {x, y}, type: type, name: name}} <- @entities.map do %>
+          <%!-- TODO(@ellyxir): remove sort when entity layer uses streams (#127) --%>
+          <%= for {id, %{pos: {x, y}, type: type, name: name}} <- Enum.sort_by(@entities.map, fn {id, _} -> id end) do %>
             <span
               data-entity={entity_type(type, id, @user_id)}
               class={[
