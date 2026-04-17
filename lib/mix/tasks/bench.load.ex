@@ -320,16 +320,20 @@ defmodule Mix.Tasks.Bench.Load do
   defp print_mailbox_stats(snapshots) do
     mailbox_snapshots = Enum.map(snapshots, & &1.mailboxes)
 
-    [:entity_server, :world_server, :combat_server]
-    |> Enum.each(fn server ->
-      depths = Enum.map(mailbox_snapshots, &Map.get(&1, server, 0))
-      avg = div(Enum.sum(depths), length(depths))
-      peak = Enum.max(depths)
-      name = server |> Atom.to_string() |> String.replace("_", " ")
-      Mix.shell().info("    #{name}: avg #{avg}  peak #{peak}")
-    end)
+    lines =
+      [:entity_server, :world_server, :combat_server]
+      |> Enum.map(fn server ->
+        depths = Enum.map(mailbox_snapshots, &Map.get(&1, server, 0))
+        avg = div(Enum.sum(depths), length(depths))
+        peak = Enum.max(depths)
+        name = server |> Atom.to_string() |> String.replace("_", " ")
+        "#{name}: avg #{avg}  peak #{peak}"
+      end)
 
-    Mix.shell().info("")
+    Mix.shell().info("""
+    -- mailbox depth --
+    #{Enum.join(lines, "\n")}
+    """)
   end
 
   @spec avg_field(maps :: [map()], field :: atom()) :: float()
