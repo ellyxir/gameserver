@@ -39,6 +39,8 @@ defmodule GameserverWeb.WorldLive do
 
         if Entities.has_entity?(entities, user_id) do
           map_cells = WorldServer.get_map() |> GameMap.to_cells()
+          map_width = length(hd(map_cells))
+          map_height = length(map_cells)
           {:ok, entity} = EntityServer.get_entity(user_id)
           abilities = Enum.flat_map(entity.abilities, &resolve_ability/1)
 
@@ -48,6 +50,8 @@ defmodule GameserverWeb.WorldLive do
              user_id: user_id,
              username: username,
              map_cells: map_cells,
+             map_width: map_width,
+             map_height: map_height,
              entities: entities,
              player_stats: entity.stats,
              player_cooldowns: entity.cooldowns,
@@ -298,6 +302,20 @@ defmodule GameserverWeb.WorldLive do
     {:ok, position} = Entities.get_position(entities, user_id)
     position
   end
+
+  @spec entity_type(Entity.entity_type(), UUID.t(), UUID.t()) :: String.t()
+  defp entity_type(:user, id, id), do: "player"
+  defp entity_type(:user, _id, _user_id), do: "other-player"
+  defp entity_type(:mob, _id, _user_id), do: "mob"
+
+  @spec entity_color(Entity.entity_type(), UUID.t(), UUID.t()) :: String.t()
+  defp entity_color(:user, id, id), do: "text-yellow-300"
+  defp entity_color(:user, _id, _user_id), do: "text-cyan-300"
+  defp entity_color(:mob, _id, _user_id), do: "text-red-400"
+
+  @spec entity_symbol(Entity.entity_type(), String.t()) :: String.t()
+  defp entity_symbol(:user, _name), do: "@"
+  defp entity_symbol(:mob, name), do: String.first(name)
 
   @spec format_combat_message(CombatEvent.t(), map()) :: String.t()
   defp format_combat_message(%CombatEvent{} = event, assigns) do

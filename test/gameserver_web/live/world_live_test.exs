@@ -107,6 +107,20 @@ defmodule GameserverWeb.WorldLiveTest do
     end
   end
 
+  describe "two-layer rendering" do
+    test "entities render in entity layer, not map layer", %{conn: conn} do
+      {:ok, user} = User.new("layeruser")
+      {:ok, _pos} = WorldServer.join_user(user)
+
+      {:ok, view, _html} = live(conn, ~p"/world?user_id=#{user.id}")
+
+      assert has_element?(view, "#map-layer")
+      assert has_element?(view, "#entity-layer")
+      assert has_element?(view, "#entity-layer [data-entity=player]")
+      refute has_element?(view, "#map-layer [data-entity]")
+    end
+  end
+
   describe "player on map" do
     test "renders player as @ on the map", %{conn: conn} do
       {:ok, user} = User.new("mapplayer")
