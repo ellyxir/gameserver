@@ -31,7 +31,7 @@ defmodule Mix.Tasks.Bench.Load do
 
     enable_server()
     Mix.Task.run("app.start")
-    Logger.configure(level: :info)
+    Logger.configure(level: :warning)
 
     port = port()
     await_ready!(port)
@@ -79,7 +79,7 @@ defmodule Mix.Tasks.Bench.Load do
           {players :: pos_integer(), move_interval :: pos_integer(), duration :: pos_integer(),
            ramp_rate :: pos_integer()}
   defp parse_args(args) do
-    {opts, _, _} =
+    {opts, _, invalid} =
       OptionParser.parse(args,
         strict: [
           players: :integer,
@@ -88,6 +88,10 @@ defmodule Mix.Tasks.Bench.Load do
           ramp_rate: :integer
         ]
       )
+
+    for {flag, _} <- invalid do
+      Mix.raise("unknown option: #{flag}")
+    end
 
     players = Keyword.get(opts, :players, 100)
     move_interval = Keyword.get(opts, :move_interval, Gameserver.WorldServer.move_cooldown_ms())
