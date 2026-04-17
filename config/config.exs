@@ -9,7 +9,13 @@ import Config
 
 config :gameserver,
   ecto_repos: [Gameserver.Repo],
-  generators: [timestamp_type: :utc_datetime]
+  generators: [timestamp_type: :utc_datetime],
+  map_width: 50,
+  map_height: 50,
+  map_room_count: 15,
+  map_room_dim_min: 5,
+  map_room_dim_max: 10,
+  mob_count: 35
 
 # Configures the endpoint
 config :gameserver, GameserverWeb.Endpoint,

@@ -197,12 +197,20 @@ defmodule Gameserver.WorldServer do
     # generate the map
     width = Application.get_env(:gameserver, :map_width, 50)
     height = Application.get_env(:gameserver, :map_height, 50)
+    room_count = Application.get_env(:gameserver, :map_room_count, 15)
+    room_dim_min = Application.get_env(:gameserver, :map_room_dim_min, 5)
+    room_dim_max = Application.get_env(:gameserver, :map_room_dim_max, 10)
 
     map =
       Keyword.get(
         opts,
         :map,
-        GameMap.generate(width, height, seed: seed)
+        GameMap.generate(width, height,
+          seed: seed,
+          room_count: room_count,
+          room_dim_min: room_dim_min,
+          room_dim_max: room_dim_max
+        )
       )
 
     # grab the new seed in case it was changed
