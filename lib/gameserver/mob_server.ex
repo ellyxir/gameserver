@@ -9,7 +9,7 @@ defmodule Gameserver.MobServer do
   alias Gameserver.UUID
   alias Gameserver.WorldServer
 
-  @mob_names ["goblin", "spider", "rat"]
+  @default_mob_names ["goblin", "spider", "rat"]
 
   @typedoc false
   @typep option() ::
@@ -25,6 +25,8 @@ defmodule Gameserver.MobServer do
     DynamicSupervisor.start_link(__MODULE__, world_server, sup_opts)
   end
 
+  # dialyzer can't track opaque types (MapSet) through Enum.reduce accumulators
+  @dialyzer {:no_opaque, init: 1}
   @impl DynamicSupervisor
   def init(world_server) do
     sup = self()
@@ -35,15 +37,46 @@ defmodule Gameserver.MobServer do
       map = %GameMap{rooms: rooms} = WorldServer.get_map(world_server)
 
       # distribute mobs across rooms, cycling through available rooms
-      @mob_names
+      mob_count = Application.get_env(:gameserver, :mob_count, 35)
+
+      @default_mob_names
+      |> Stream.cycle()
+      |> Enum.take(mob_count)
       |> Enum.zip(Stream.cycle(rooms))
-      |> Enum.each(fn {name, room} ->
-        pos = GameMap.random_tile_in_room(map, room)
+      |> Enum.reduce(MapSet.new(), fn {name, room}, taken ->
+        pos = available_tile_in_room(map, room, taken)
         {:ok, _pid} = spawn_mob(sup, name, pos, world_server)
+        MapSet.put(taken, pos)
       end)
     end)
 
     DynamicSupervisor.init(strategy: :one_for_one)
+  end
+
+  @max_tile_attempts 50
+
+  @dialyzer {:no_opaque, available_tile_in_room: 4}
+  @spec available_tile_in_room(
+          GameMap.t(),
+          GameMap.room(),
+          MapSet.t(GameMap.coord()),
+          attempts :: non_neg_integer()
+        ) ::
+          GameMap.coord()
+  defp available_tile_in_room(map, room, taken, attempts \\ @max_tile_attempts)
+
+  defp available_tile_in_room(map, room, _taken, 0) do
+    GameMap.random_tile_in_room(map, room)
+  end
+
+  defp available_tile_in_room(map, room, taken, attempts) do
+    pos = GameMap.random_tile_in_room(map, room)
+
+    if MapSet.member?(taken, pos) do
+      available_tile_in_room(map, room, taken, attempts - 1)
+    else
+      pos
+    end
   end
 
   @mob_abilities [:melee_strike, :poison_strike]

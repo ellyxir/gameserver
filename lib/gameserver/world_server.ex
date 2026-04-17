@@ -186,9 +186,6 @@ defmodule Gameserver.WorldServer do
 
   # Server callbacks
 
-  @default_map_width 30
-  @default_map_height 30
-
   @impl GenServer
   def init(opts) do
     entity_server = Keyword.get(opts, :entity_server, EntityServer)
@@ -198,11 +195,22 @@ defmodule Gameserver.WorldServer do
     seed = StateETS.get_seed(state_ets)
 
     # generate the map
+    width = Application.get_env(:gameserver, :map_width, 50)
+    height = Application.get_env(:gameserver, :map_height, 50)
+    room_count = Application.get_env(:gameserver, :map_room_count, 15)
+    room_dim_min = Application.get_env(:gameserver, :map_room_dim_min, 5)
+    room_dim_max = Application.get_env(:gameserver, :map_room_dim_max, 10)
+
     map =
       Keyword.get(
         opts,
         :map,
-        GameMap.generate(@default_map_width, @default_map_height, seed: seed)
+        GameMap.generate(width, height,
+          seed: seed,
+          room_count: room_count,
+          room_dim_min: room_dim_min,
+          room_dim_max: room_dim_max
+        )
       )
 
     # grab the new seed in case it was changed

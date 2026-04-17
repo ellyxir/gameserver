@@ -23,6 +23,15 @@ config :gameserver, Gameserver.Mailer, adapter: Swoosh.Adapters.Test
 # Disable swoosh api client as it is only required for production adapters
 config :swoosh, :api_client, false
 
+# Smaller map and fewer mobs for fast, predictable tests
+config :gameserver,
+  map_width: 30,
+  map_height: 30,
+  map_room_count: 8,
+  map_room_dim_min: 3,
+  map_room_dim_max: 7,
+  mob_count: 3
+
 # Print only warnings and errors during test
 config :logger, level: :warning
 

@@ -85,7 +85,7 @@ async function run() {
     await input.click();
     await input.pressSequentially(args.username, { delay: 20 });
     await page.getByRole("button", { name: "Join World" }).click();
-    await page.waitForURL(/\/world\?user_id=/, { timeout: 10000 });
+    await page.waitForURL(/\/world\?user_id=/, { timeout: 30000 });
 
     // hook into the existing LiveView WebSocket.
     // waitForFunction polls until the socket is connected, avoiding a race
