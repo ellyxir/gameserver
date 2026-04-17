@@ -134,8 +134,8 @@ defmodule Gameserver.TickServer do
   @spec apply_transform(Tick.transform(), Entity.t(), UUID.t()) :: Entity.t()
   defp apply_transform(transform, entity, tick_id) do
     case transform.(entity) do
-      {entity, :continue} -> entity
-      {entity, :stop} -> Entity.remove_tick(entity, tick_id)
+      {entity, :continue} -> Entity.check_death(entity)
+      {entity, :stop} -> entity |> Entity.check_death() |> Entity.remove_tick(tick_id)
     end
   end
 end

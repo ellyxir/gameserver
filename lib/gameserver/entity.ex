@@ -9,6 +9,7 @@ defmodule Gameserver.Entity do
   alias Gameserver.BaseStat
   alias Gameserver.Cooldowns
   alias Gameserver.Map, as: GameMap
+  alias Gameserver.Stat
   alias Gameserver.Stats
   alias Gameserver.Tick
   alias Gameserver.UUID
@@ -125,5 +126,15 @@ defmodule Gameserver.Entity do
     current_stat = Map.fetch!(entity.stats, stat)
     updated_stat = BaseStat.remove_bonus(current_stat, id)
     %{entity | stats: Map.put(entity.stats, stat, updated_stat)}
+  end
+
+  @doc """
+  Marks the entity dead if effective HP has reached zero.
+  Already-dead entities stay dead. Sticky — never resurrects.
+  """
+  @spec check_death(t()) :: t()
+  def check_death(%__MODULE__{stats: stats} = entity) do
+    dead = stats.dead || Stat.effective(stats.hp, stats) <= 0
+    %{entity | stats: %{stats | dead: dead}}
   end
 end

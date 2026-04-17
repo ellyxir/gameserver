@@ -131,4 +131,29 @@ defmodule Gameserver.EntityTest do
       assert Entity.id(entity) == entity.id
     end
   end
+
+  describe "check_death/1" do
+    alias Gameserver.BaseStat
+    alias Gameserver.HpStat
+
+    test "leaves an alive entity with positive hp unchanged" do
+      entity = Entity.new(name: "alice", type: :user, pos: {0, 0})
+      assert Entity.check_death(entity) == entity
+      refute entity.stats.dead
+    end
+
+    test "marks an entity dead when effective hp is zero" do
+      stats = Stats.new(hp: %HpStat{base_stat: %BaseStat{base: 0}})
+      entity = Entity.new(name: "goblin", type: :mob, pos: {0, 0}, stats: stats)
+
+      updated = Entity.check_death(entity)
+      assert updated.stats.dead
+    end
+
+    test "leaves already-dead entity dead" do
+      entity = Entity.new(name: "ghost", type: :mob, pos: {0, 0}, stats: Stats.new(dead: true))
+      updated = Entity.check_death(entity)
+      assert updated.stats.dead
+    end
+  end
 end
