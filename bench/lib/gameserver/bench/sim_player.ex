@@ -44,9 +44,9 @@ defmodule Gameserver.Bench.SimPlayer do
   - `:move_interval_ms` - ms between moves (defaults to `WorldServer.move_cooldown_ms()`)
   - `:caller` - pid to notify when joined (default `self()`)
   """
-  @spec start_link(player_index :: non_neg_integer(), keyword()) ::
+  @spec start(player_index :: non_neg_integer(), keyword()) ::
           {:ok, pid()} | {:error, term()}
-  def start_link(player_index, opts \\ []) do
+  def start(player_index, opts \\ []) do
     port = Keyword.get(opts, :port, 4000)
     move_interval_ms = Keyword.get(opts, :move_interval_ms, WorldServer.move_cooldown_ms())
     caller = Keyword.get(opts, :caller, self())
@@ -70,7 +70,10 @@ defmodule Gameserver.Bench.SimPlayer do
         joined: false
       }
 
-      WebSockex.start_link(url, __MODULE__, state)
+      extra_headers =
+        if tokens.cookie, do: [{"cookie", tokens.cookie}], else: []
+
+      WebSockex.start(url, __MODULE__, state, extra_headers: extra_headers)
     end
   end
 
@@ -79,10 +82,15 @@ defmodule Gameserver.Bench.SimPlayer do
   defp fetch_tokens(port, user_id) do
     url = "http://localhost:#{port}/world?user_id=#{user_id}"
 
-    case Req.get(url) do
-      {:ok, %{status: 200, body: body}} -> TokenParser.parse(body)
-      {:ok, %{status: status}} -> {:error, {:http_status, status}}
-      {:error, reason} -> {:error, reason}
+    case Req.get(url, redirect: false) do
+      {:ok, %{status: 200, body: body, headers: headers}} ->
+        TokenParser.parse(body, Map.to_list(headers))
+
+      {:ok, %{status: status}} ->
+        {:error, {:http_status, status}}
+
+      {:error, reason} ->
+        {:error, reason}
     end
   end
 

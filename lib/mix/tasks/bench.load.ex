@@ -141,7 +141,7 @@ defmodule Mix.Tasks.Bench.Load do
         ) ::
           {:ok, pid()} | {:error, term()}
   defp start_player(index, port, move_interval) do
-    SimPlayer.start_link(index, port: port, move_interval_ms: move_interval, caller: self())
+    SimPlayer.start(index, port: port, move_interval_ms: move_interval, caller: self())
   end
 
   @spec await_joins(player_pids :: [pid()], expected :: pos_integer()) :: non_neg_integer()
@@ -199,7 +199,7 @@ defmodule Mix.Tasks.Bench.Load do
     }
   end
 
-  @spec parse_scheduler_util(term()) :: {float(), [float()]}
+  @spec parse_scheduler_util(term()) :: {total_percent :: float(), per_scheduler :: [float()]}
   defp parse_scheduler_util(util_list) do
     per_scheduler =
       util_list
@@ -208,13 +208,10 @@ defmodule Mix.Tasks.Bench.Load do
         {:weighted, _, _} -> false
         _ -> true
       end)
-      |> Enum.map(fn {_id, util, _percent} -> util end)
+      |> Enum.map(fn {_type, _id, util, _percent} -> util end)
 
     total =
-      case Enum.find(util_list, fn
-             {:total, _, _} -> true
-             _ -> false
-           end) do
+      case Enum.find(util_list, &match?({:total, _, _}, &1)) do
         {:total, util, _} -> Float.round(util * 100, 1)
         _ -> 0.0
       end

@@ -10,7 +10,7 @@ defmodule Gameserver.Bench.TokenParserTest do
       <meta name="csrf-token" content="test-csrf-token-123" />
     </head>
     <body>
-      <div data-phx-main id="phx-F9xKz" data-phx-session="session-token-abc" data-phx-static="static-token-xyz">
+      <div id="phx-F9xKz" data-phx-main data-phx-session="session-token-abc" data-phx-static="static-token-xyz">
         <div>page content</div>
       </div>
     </body>
