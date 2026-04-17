@@ -31,6 +31,7 @@ defmodule Mix.Tasks.Bench.Load do
 
     enable_server()
     Mix.Task.run("app.start")
+    Logger.configure(level: :info)
 
     port = port()
     await_ready!(port)
@@ -167,17 +168,16 @@ defmodule Mix.Tasks.Bench.Load do
     end)
   end
 
+  # :scheduler.utilization(1) blocks for 1 second per call, so
+  # sample_count == duration_s gives roughly the right duration
   @spec sample_beam_metrics(Metrics.table(), duration_s :: pos_integer()) :: non_neg_integer()
   defp sample_beam_metrics(table, duration_s) do
-    sample_count = duration_s
-
-    Enum.each(1..sample_count, fn _ ->
-      Process.sleep(1000)
+    Enum.each(1..duration_s, fn _ ->
       snapshot = collect_beam_snapshot()
       Metrics.record_beam(table, snapshot)
     end)
 
-    sample_count
+    duration_s
   end
 
   @spec collect_beam_snapshot() :: map()
