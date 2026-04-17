@@ -51,47 +51,32 @@ assuming a fixed order between tag attributes.
 default 50x50 map, 35 mobs, 30 second duration, move interval at
 server cooldown (150ms). all runs on the same machine.
 
-### 10 players
+| metric | 10 players | 20 players | 30 players |
+|---|---|---|---|
+| renders | 7,349 | 17,492 | 25,918 |
+| avg render | 14.4 ms | 32.9 ms | 53.63 ms |
+| p50 render | 14.1 ms | 27.93 ms | 41.58 ms |
+| p95 render | 19.94 ms | 63.72 ms | 119.97 ms |
+| p99 render | 22.66 ms | 81.74 ms | 143.78 ms |
+| max render | 31.98 ms | 118.82 ms | 203.07 ms |
+| avg round-trip | 10.96 ms | 6,817 ms | 11,957 ms |
+| p50 round-trip | 8.86 ms | 6,003 ms | 9,026 ms |
+| p95 round-trip | 31.41 ms | 17,038 ms | 33,526 ms |
+| p99 round-trip | 46.46 ms | 18,509 ms | 37,733 ms |
+| max round-trip | 64.6 ms | 19,709 ms | 39,920 ms |
+| scheduler util | avg 22.5%, peak 26% | avg 53.5%, peak 55.7% | avg 61.4%, peak 68.1% |
+| memory | avg 156 MB, peak 165 MB | avg 277 MB, peak 300 MB | avg 405 MB, peak 438 MB |
+| mailbox depth | all zero | entity/world peaked at 1 | entity/world peaked at 2 |
 
-| metric | value |
-|---|---|
-| renders | 7,300 |
-| avg render | 14.46 ms |
-| p50 render | 14.07 ms |
-| p95 render | 20.31 ms |
-| p99 render | 24.07 ms |
-| max render | 59.71 ms |
-| scheduler util | avg 21.9%, peak 27.2% |
-| memory | avg 151 MB, peak 159 MB |
-| mailbox depth | all zero |
+at 10 players, round-trip stays under 65ms. responsive movement.
 
-### 20 players
+at 20 players, the server renders fast enough (33ms avg) but the
+liveview process mailboxes queue up faster than they drain. a player's
+keypress waits 6 seconds on average before the server processes it.
+the browser accumulates a backlog of diffs that plays out long after
+the events were sent.
 
-| metric | value |
-|---|---|
-| renders | 17,798 |
-| avg render | 33.15 ms |
-| p50 render | 28.3 ms |
-| p95 render | 63.34 ms |
-| p99 render | 78.84 ms |
-| max render | 136.15 ms |
-| scheduler util | avg 53.2%, peak 55.4% |
-| memory | avg 276 MB, peak 305 MB |
-| mailbox depth | all zero |
-
-### 30 players
-
-| metric | value |
-|---|---|
-| renders | 25,906 |
-| avg render | 52.95 ms |
-| p50 render | 41.05 ms |
-| p95 render | 117.51 ms |
-| p99 render | 142.21 ms |
-| max render | 200.79 ms |
-| scheduler util | avg 63.1%, peak 73.4% |
-| memory | avg 399 MB, peak 458 MB |
-| mailbox depth | entity/world peaked at 1 |
+at 30 players, 12 second average round-trip, p99 at 40 seconds.
 
 ## scaling observations
 
@@ -100,11 +85,12 @@ added means every existing liveview has one more entity to render in
 the map comprehension, and one more liveview process receiving every
 broadcast.
 
-at 30 players the p95 render is 117ms, which is well past the point
-where movement feels laggy. the bottleneck is the same one identified
-in [06-map_cpu_perf.md](06-map_cpu_perf.md): the map comprehension
-re-runs O(map_area) on every entity change because `@entities` is
-referenced inside the comprehension.
+the gap between render time and round-trip grows rapidly with more players.
+at 10 players, render is 14ms and round-trip is 11ms, which is reasonable.
+at 20 players, render is 33ms but round-trip is 6.8 seconds -- the liveview
+processes can't drain their mailboxes fast enough. each move generates 20 pubsub
+broadcasts (one per connected liveview), and each broadcast triggers a full
+O(map_area) re-render. the renders pile up in the liveview process mailboxes.
 
 the genserver mailboxes stay near zero even at 30 players. the
 genservers are not the bottleneck, the liveview rendering is.

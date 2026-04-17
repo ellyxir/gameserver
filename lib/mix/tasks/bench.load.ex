@@ -59,7 +59,9 @@ defmodule Mix.Tasks.Bench.Load do
     )
 
     Mix.shell().info("joining players at #{ramp_rate}/s...")
-    {player_pids, joined_count} = spawn_and_join_players(players, port, move_interval, ramp_rate)
+
+    {player_pids, joined_count} =
+      spawn_and_join_players(players, port, move_interval, ramp_rate, table)
 
     Mix.shell().info("#{joined_count}/#{players} players connected")
     Mix.shell().info("running load test for #{duration}s...")
@@ -130,9 +132,10 @@ defmodule Mix.Tasks.Bench.Load do
           players :: pos_integer(),
           port :: pos_integer(),
           move_interval :: pos_integer(),
-          ramp_rate :: pos_integer()
+          ramp_rate :: pos_integer(),
+          metrics_table :: Metrics.table()
         ) :: {pids :: [pid()], joined :: non_neg_integer()}
-  defp spawn_and_join_players(players, port, move_interval, ramp_rate) do
+  defp spawn_and_join_players(players, port, move_interval, ramp_rate, metrics_table) do
     delay_ms = div(1000, ramp_rate)
     join_timeout = 5000
 
@@ -140,7 +143,7 @@ defmodule Mix.Tasks.Bench.Load do
     |> Enum.reduce({[], 0}, fn i, {pids, joined} ->
       if i > 1, do: Process.sleep(delay_ms)
 
-      case start_player(i, port, move_interval) do
+      case start_player(i, port, move_interval, metrics_table) do
         {:ok, pid} ->
           receive do
             {:sim_player_joined, _user_id} ->
@@ -165,11 +168,17 @@ defmodule Mix.Tasks.Bench.Load do
   @spec start_player(
           index :: pos_integer(),
           port :: pos_integer(),
-          move_interval :: pos_integer()
+          move_interval :: pos_integer(),
+          metrics_table :: Metrics.table()
         ) ::
           {:ok, pid()} | {:error, term()}
-  defp start_player(index, port, move_interval) do
-    SimPlayer.start(index, port: port, move_interval_ms: move_interval, caller: self())
+  defp start_player(index, port, move_interval, metrics_table) do
+    SimPlayer.start(index,
+      port: port,
+      move_interval_ms: move_interval,
+      caller: self(),
+      metrics_table: metrics_table
+    )
   end
 
   # :scheduler.utilization(1) blocks for 1 second per call, so
@@ -264,6 +273,7 @@ defmodule Mix.Tasks.Bench.Load do
         ) :: :ok
   defp print_report(table, players, move_interval, duration) do
     renders = table |> Metrics.get_renders() |> Enum.sort()
+    latencies = table |> Metrics.get_latencies() |> Enum.sort()
     beam_snapshots = Metrics.get_beam_snapshots(table)
 
     Mix.shell().info("""
@@ -275,6 +285,7 @@ defmodule Mix.Tasks.Bench.Load do
     """)
 
     print_render_stats(renders)
+    print_latency_stats(latencies)
     print_beam_stats(beam_snapshots)
   end
 
@@ -294,6 +305,25 @@ defmodule Mix.Tasks.Bench.Load do
     p95:  #{Metrics.format_us(Metrics.percentile(renders, 95))}
     p99:  #{Metrics.format_us(Metrics.percentile(renders, 99))}
     max:  #{Metrics.format_us(List.last(renders))}
+    """)
+  end
+
+  @spec print_latency_stats(latencies :: [non_neg_integer()]) :: :ok
+  defp print_latency_stats([]) do
+    Mix.shell().info("  no latency data captured")
+  end
+
+  defp print_latency_stats(latencies) do
+    count = length(latencies)
+    avg = div(Enum.sum(latencies), count)
+
+    Mix.shell().info("""
+    -- client round-trip latency (#{count} events) --
+    avg:  #{Metrics.format_us(avg)}
+    p50:  #{Metrics.format_us(Metrics.percentile(latencies, 50))}
+    p95:  #{Metrics.format_us(Metrics.percentile(latencies, 95))}
+    p99:  #{Metrics.format_us(Metrics.percentile(latencies, 99))}
+    max:  #{Metrics.format_us(List.last(latencies))}
     """)
   end
 

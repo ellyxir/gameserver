@@ -11,6 +11,7 @@ defmodule Gameserver.Bench.SimPlayer do
 
   require Logger
 
+  alias Gameserver.Bench.Metrics
   alias Gameserver.Bench.TokenParser
   alias Gameserver.User
   alias Gameserver.WorldServer
@@ -28,7 +29,9 @@ defmodule Gameserver.Bench.SimPlayer do
           tokens: TokenParser.tokens(),
           url: String.t(),
           move_interval_ms: pos_integer(),
-          joined: boolean()
+          joined: boolean(),
+          pending_refs: %{String.t() => integer()},
+          metrics_table: Metrics.table() | nil
         }
 
   # -- Public API --
@@ -43,6 +46,7 @@ defmodule Gameserver.Bench.SimPlayer do
   - `:port` - server port (default 4000)
   - `:move_interval_ms` - ms between moves (defaults to `WorldServer.move_cooldown_ms()`)
   - `:caller` - pid to notify when joined (default `self()`)
+  - `:metrics_table` - ETS table for recording latencies (optional)
   """
   @spec start(player_index :: non_neg_integer(), keyword()) ::
           {:ok, pid()} | {:error, term()}
@@ -50,6 +54,7 @@ defmodule Gameserver.Bench.SimPlayer do
     port = Keyword.get(opts, :port, 4000)
     move_interval_ms = Keyword.get(opts, :move_interval_ms, WorldServer.move_cooldown_ms())
     caller = Keyword.get(opts, :caller, self())
+    metrics_table = Keyword.get(opts, :metrics_table)
     username = "loadtest_#{player_index}"
 
     with {:ok, user} <- User.new(username),
@@ -67,7 +72,9 @@ defmodule Gameserver.Bench.SimPlayer do
         tokens: tokens,
         url: "http://localhost:#{port}/world?user_id=#{user.id}",
         move_interval_ms: move_interval_ms,
-        joined: false
+        joined: false,
+        pending_refs: %{},
+        metrics_table: metrics_table
       }
 
       extra_headers =
@@ -168,8 +175,20 @@ defmodule Gameserver.Bench.SimPlayer do
         schedule_move(state.move_interval_ms)
         {:ok, %{state | joined: true}}
 
-      {:phx_reply, _ref, _payload} ->
-        {:ok, state}
+      {:phx_reply, ref, _payload} ->
+        case Map.pop(state.pending_refs, ref) do
+          {nil, _} ->
+            {:ok, state}
+
+          {sent_at, pending} ->
+            latency_us = System.monotonic_time(:microsecond) - sent_at
+
+            if state.metrics_table do
+              Metrics.record_latency(state.metrics_table, latency_us)
+            end
+
+            {:ok, %{state | pending_refs: pending}}
+        end
 
       {:diff, _payload} ->
         {:ok, state}
@@ -194,8 +213,15 @@ defmodule Gameserver.Bench.SimPlayer do
     key = Enum.random(@keys)
     ref = to_string(state.ref_counter)
     msg = build_keydown_message(state.topic, ref, key)
+    sent_at = System.monotonic_time(:microsecond)
     schedule_move(state.move_interval_ms)
-    {:reply, {:text, msg}, %{state | ref_counter: state.ref_counter + 1}}
+
+    {:reply, {:text, msg},
+     %{
+       state
+       | ref_counter: state.ref_counter + 1,
+         pending_refs: Map.put(state.pending_refs, ref, sent_at)
+     }}
   end
 
   def handle_info(:heartbeat, state) do
