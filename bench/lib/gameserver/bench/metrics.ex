@@ -74,7 +74,7 @@ defmodule Gameserver.Bench.Metrics do
   end
 
   @doc "Formats a microsecond value as a human-readable string."
-  @spec format_us(non_neg_integer()) :: String.t()
+  @spec format_us(number()) :: String.t()
   def format_us(us) when us >= 1000, do: "#{Float.round(us / 1000, 2)} ms"
   def format_us(us), do: "#{us} us"
 end

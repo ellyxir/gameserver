@@ -48,4 +48,21 @@ defmodule Gameserver.Bench.TokenParserTest do
 
     assert {:error, :missing_tokens} = TokenParser.parse(html)
   end
+
+  test "extracts cookie from response headers with list values" do
+    headers = [{"set-cookie", ["_session=abc123; path=/; HttpOnly"]}]
+    assert {:ok, tokens} = TokenParser.parse(@sample_html, headers)
+    assert tokens.cookie == "_session=abc123"
+  end
+
+  test "extracts cookie from response headers with string value" do
+    headers = [{"set-cookie", "_session=xyz789; path=/"}]
+    assert {:ok, tokens} = TokenParser.parse(@sample_html, headers)
+    assert tokens.cookie == "_session=xyz789"
+  end
+
+  test "cookie is nil when no set-cookie header" do
+    assert {:ok, tokens} = TokenParser.parse(@sample_html, [])
+    assert tokens.cookie == nil
+  end
 end

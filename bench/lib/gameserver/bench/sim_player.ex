@@ -9,8 +9,6 @@ defmodule Gameserver.Bench.SimPlayer do
 
   use WebSockex
 
-  require Logger
-
   alias Gameserver.Bench.Metrics
   alias Gameserver.Bench.TokenParser
   alias Gameserver.User

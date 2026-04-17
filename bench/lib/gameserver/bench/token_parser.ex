@@ -25,7 +25,7 @@ defmodule Gameserver.Bench.TokenParser do
 
   Optionally accepts response headers to extract the session cookie.
   """
-  @spec parse(html :: String.t(), headers :: [{String.t(), String.t()}]) ::
+  @spec parse(html :: String.t(), headers :: [{String.t(), String.t() | [String.t()]}]) ::
           {:ok, tokens()} | {:error, :missing_tokens}
   def parse(html, headers \\ []) do
     with {:ok, csrf_token} <- extract(html, @csrf_regex),

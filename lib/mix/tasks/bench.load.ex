@@ -15,6 +15,7 @@ defmodule Mix.Tasks.Bench.Load do
   - `--move-interval` - ms between moves per player (default: server move cooldown)
   - `--duration` - test duration in seconds (default 60)
   - `--ramp-rate` - players to connect per second during ramp-up (default 10)
+  - `--map-size` - override map width and height, auto-scales room count and mob count
   """
 
   use Mix.Task
