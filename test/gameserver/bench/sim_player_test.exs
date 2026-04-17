@@ -46,4 +46,21 @@ defmodule Gameserver.Bench.SimPlayerTest do
       assert [nil, "10", "phoenix", "heartbeat", %{}] = decoded
     end
   end
+
+  describe "parse_frame/1" do
+    test "parses a phx_reply frame" do
+      frame = Jason.encode!(["1", "1", "lv:phx-F9xKz", "phx_reply", %{"status" => "ok"}])
+      assert {:phx_reply, "1", %{"status" => "ok"}} = SimPlayer.parse_frame(frame)
+    end
+
+    test "parses a diff frame" do
+      frame = Jason.encode!(["1", nil, "lv:phx-F9xKz", "diff", %{"0" => "changed"}])
+      assert {:diff, %{"0" => "changed"}} = SimPlayer.parse_frame(frame)
+    end
+
+    test "returns unknown for unrecognized events" do
+      frame = Jason.encode!(["1", "2", "lv:phx-F9xKz", "something_else", %{}])
+      assert {:unknown, "something_else"} = SimPlayer.parse_frame(frame)
+    end
+  end
 end

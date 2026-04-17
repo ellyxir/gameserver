@@ -9,22 +9,87 @@ defmodule Gameserver.Bench.SimPlayer do
 
   use WebSockex
 
+  require Logger
+
   alias Gameserver.Bench.TokenParser
+  alias Gameserver.User
+  alias Gameserver.WorldServer
 
   @join_ref "1"
+  @heartbeat_interval_ms 30_000
+  @keys ~w(w a s d)
 
-  @typep tokens() :: TokenParser.tokens()
+  @typedoc "SimPlayer internal state"
+  @type state() :: %{
+          topic: String.t(),
+          ref_counter: non_neg_integer(),
+          caller: pid(),
+          user_id: String.t(),
+          tokens: TokenParser.tokens(),
+          url: String.t(),
+          move_interval_ms: pos_integer(),
+          joined: boolean()
+        }
 
-  @typep state() :: %{
-           topic: String.t(),
-           ref_counter: non_neg_integer(),
-           caller: pid()
-         }
+  # -- Public API --
+
+  @doc """
+  Starts a simulated player that joins the game and moves periodically.
+
+  Creates a user via the direct API (same BEAM), fetches LiveView
+  tokens over HTTP, then connects via WebSocket and joins the LiveView.
+
+  Options:
+  - `:port` - server port (default 4000)
+  - `:move_interval_ms` - ms between moves (defaults to `WorldServer.move_cooldown_ms()`)
+  - `:caller` - pid to notify when joined (default `self()`)
+  """
+  @spec start_link(player_index :: non_neg_integer(), keyword()) ::
+          {:ok, pid()} | {:error, term()}
+  def start_link(player_index, opts \\ []) do
+    port = Keyword.get(opts, :port, 4000)
+    move_interval_ms = Keyword.get(opts, :move_interval_ms, WorldServer.move_cooldown_ms())
+    caller = Keyword.get(opts, :caller, self())
+    username = "loadtest_#{player_index}"
+
+    with {:ok, user} <- User.new(username),
+         {:ok, _position} <- WorldServer.join_user(user),
+         {:ok, tokens} <- fetch_tokens(port, user.id) do
+      url = "ws://localhost:#{port}/live/websocket?_csrf_token=#{URI.encode_www_form(tokens.csrf_token)}&vsn=2.0.0"
+      topic = "lv:#{tokens.phx_id}"
+
+      state = %{
+        topic: topic,
+        # starts at 2 because the join message uses ref "1"
+        ref_counter: 2,
+        caller: caller,
+        user_id: user.id,
+        tokens: tokens,
+        url: "http://localhost:#{port}/world?user_id=#{user.id}",
+        move_interval_ms: move_interval_ms,
+        joined: false
+      }
+
+      WebSockex.start_link(url, __MODULE__, state)
+    end
+  end
+
+  @spec fetch_tokens(port :: non_neg_integer(), user_id :: String.t()) ::
+          {:ok, TokenParser.tokens()} | {:error, term()}
+  defp fetch_tokens(port, user_id) do
+    url = "http://localhost:#{port}/world?user_id=#{user_id}"
+
+    case Req.get(url) do
+      {:ok, %{status: 200, body: body}} -> TokenParser.parse(body)
+      {:ok, %{status: status}} -> {:error, {:http_status, status}}
+      {:error, reason} -> {:error, reason}
+    end
+  end
 
   # -- Public API: message builders --
 
   @doc "Builds a LiveView phx_join JSON message from parsed tokens."
-  @spec build_join_message(tokens(), url :: String.t()) :: String.t()
+  @spec build_join_message(TokenParser.tokens(), url :: String.t()) :: String.t()
   def build_join_message(tokens, url) do
     topic = "lv:#{tokens.phx_id}"
 
@@ -57,23 +122,93 @@ defmodule Gameserver.Bench.SimPlayer do
     Jason.encode!([nil, ref, "phoenix", "heartbeat", %{}])
   end
 
+  # -- Frame parsing --
+
+  @typedoc "A parsed LiveView wire protocol frame"
+  @type parsed_frame() ::
+          {:phx_reply, ref :: String.t(), payload :: map()}
+          | {:diff, payload :: map()}
+          | {:unknown, event :: String.t()}
+
+  @doc "Parses a LiveView JSON frame into a tagged tuple."
+  @spec parse_frame(json :: String.t()) :: parsed_frame()
+  def parse_frame(json) do
+    case Jason.decode!(json) do
+      [_, ref, _, "phx_reply", payload] -> {:phx_reply, ref, payload}
+      [_, _, _, "diff", payload] -> {:diff, payload}
+      [_, _, _, event, _] when is_binary(event) -> {:unknown, event}
+      _other -> {:unknown, "unrecognized"}
+    end
+  end
+
   # -- WebSockex callbacks --
 
   @impl WebSockex
   @spec handle_connect(WebSockex.Conn.t(), state()) :: {:ok, state()}
   def handle_connect(_conn, state) do
+    send(self(), :send_join)
+    schedule_heartbeat()
     {:ok, state}
   end
 
   @impl WebSockex
   @spec handle_frame(WebSockex.frame(), state()) :: {:ok, state()}
+  def handle_frame({:text, json}, state) do
+    case parse_frame(json) do
+      {:phx_reply, @join_ref, %{"status" => "ok"}} when not state.joined ->
+        send(state.caller, {:sim_player_joined, state.user_id})
+        schedule_move(state.move_interval_ms)
+        {:ok, %{state | joined: true}}
+
+      {:phx_reply, _ref, _payload} ->
+        {:ok, state}
+
+      {:diff, _payload} ->
+        {:ok, state}
+
+      {:unknown, _event} ->
+        {:ok, state}
+    end
+  end
+
   def handle_frame(_frame, state) do
     {:ok, state}
   end
 
   @impl WebSockex
-  @spec handle_info(term(), state()) :: {:ok, state()}
+  @spec handle_info(term(), state()) :: {:ok, state()} | {:reply, {:text, String.t()}, state()}
+  def handle_info(:send_join, state) do
+    msg = build_join_message(state.tokens, state.url)
+    {:reply, {:text, msg}, state}
+  end
+
+  def handle_info(:move, state) do
+    key = Enum.random(@keys)
+    ref = to_string(state.ref_counter)
+    msg = build_keydown_message(state.topic, ref, key)
+    schedule_move(state.move_interval_ms)
+    {:reply, {:text, msg}, %{state | ref_counter: state.ref_counter + 1}}
+  end
+
+  def handle_info(:heartbeat, state) do
+    ref = to_string(state.ref_counter)
+    msg = build_heartbeat_message(ref)
+    schedule_heartbeat()
+    {:reply, {:text, msg}, %{state | ref_counter: state.ref_counter + 1}}
+  end
+
   def handle_info(_msg, state) do
     {:ok, state}
+  end
+
+  @spec schedule_move(interval_ms :: pos_integer()) :: reference()
+  defp schedule_move(interval_ms) do
+    jitter = :rand.uniform(div(interval_ms, 2) + 1) - 1
+    Process.send_after(self(), :move, interval_ms + jitter)
+  end
+
+  @spec schedule_heartbeat() :: reference()
+  defp schedule_heartbeat do
+    Process.send_after(self(), :heartbeat, @heartbeat_interval_ms)
   end
 end
