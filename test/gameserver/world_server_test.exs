@@ -61,6 +61,22 @@ defmodule Gameserver.WorldServerTest do
       assert Process.whereis(WorldServer) != nil
     end
 
+    test "generates map with configured dimensions" do
+      Application.put_env(:gameserver, :map_width, 15)
+      Application.put_env(:gameserver, :map_height, 20)
+
+      on_exit(fn ->
+        Application.delete_env(:gameserver, :map_width)
+        Application.delete_env(:gameserver, :map_height)
+      end)
+
+      %{world: world} = start_world_trio(:map_size_test)
+      map = WorldServer.get_map(world)
+
+      assert map.width == 15
+      assert map.height == 20
+    end
+
     test "stores map seed in state_ets on init" do
       %{world: world, state_ets: state_ets} = start_world_trio(:seed_test)
 
