@@ -135,9 +135,9 @@ defmodule Gameserver.CombatServer do
   @spec build_entity_update_fn([Effect.transform()]) :: Effect.transform()
   defp build_entity_update_fn(transforms) do
     fn entity ->
-      entity = Enum.reduce(transforms, entity, fn transform, acc -> transform.(acc) end)
-      dead = entity.stats.dead || Stat.effective(entity.stats.hp, entity.stats) <= 0
-      %{entity | stats: %{entity.stats | dead: dead}}
+      transforms
+      |> Enum.reduce(entity, fn transform, acc -> transform.(acc) end)
+      |> Entity.check_death()
     end
   end
 

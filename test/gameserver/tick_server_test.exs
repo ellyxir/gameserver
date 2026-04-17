@@ -1,6 +1,7 @@
 defmodule Gameserver.TickServerTest do
   use ExUnit.Case, async: true
 
+  alias Gameserver.BaseStat
   alias Gameserver.CombatEvent
   alias Gameserver.CombatServer
   alias Gameserver.Entity
@@ -203,6 +204,77 @@ defmodule Gameserver.TickServerTest do
 
       assert attacker_id == source.id
       assert defender_id == target.id
+    end
+  end
+
+  describe "death via tick" do
+    test "marks entity dead when tick damage reduces hp to zero", ctx do
+      target =
+        create_entity(ctx.entity_server,
+          stats: [hp: %HpStat{base_stat: %BaseStat{base: 1}}]
+        )
+
+      tick =
+        Tick.new(
+          transform: fn e ->
+            hp = HpStat.apply_damage(e.stats.hp, 1)
+            {%{e | stats: %{e.stats | hp: hp}}, :continue}
+          end,
+          source_id: target.id,
+          repeat_ms: 50
+        )
+
+      {:ok, _} =
+        EntityServer.update_entity(
+          target.id,
+          &Entity.register_tick(&1, tick),
+          ctx.entity_server
+        )
+
+      Process.sleep(150)
+
+      {:ok, updated} = EntityServer.get_entity(target.id, ctx.entity_server)
+      assert Stat.effective(updated.stats.hp, updated.stats) == 0
+      assert updated.stats.dead
+    end
+
+    test "broadcasts killing-blow combat event with dead: true", ctx do
+      Phoenix.PubSub.subscribe(Gameserver.PubSub, CombatServer.combat_topic())
+
+      source = create_entity(ctx.entity_server)
+
+      target =
+        create_entity(ctx.entity_server,
+          stats: [hp: %HpStat{base_stat: %BaseStat{base: 1}}]
+        )
+
+      tick =
+        Tick.new(
+          transform: fn e ->
+            hp = HpStat.apply_damage(e.stats.hp, 1)
+            {%{e | stats: %{e.stats | hp: hp}}, :continue}
+          end,
+          source_id: source.id,
+          repeat_ms: 50
+        )
+
+      {:ok, _} =
+        EntityServer.update_entity(
+          target.id,
+          &Entity.register_tick(&1, tick),
+          ctx.entity_server
+        )
+
+      source_id = source.id
+      target_id = target.id
+
+      assert_receive {:combat_event,
+                      %CombatEvent{
+                        attacker_id: ^source_id,
+                        defender_id: ^target_id,
+                        dead: true
+                      }},
+                     500
     end
   end
 
