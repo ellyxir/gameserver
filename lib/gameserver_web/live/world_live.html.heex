@@ -1,60 +1,54 @@
 <Layouts.app flash={@flash}>
   <div class="flex gap-8" phx-window-keydown="keydown">
-    <div>
-      <div class="font-mono text-sm leading-none bg-gray-900 text-gray-300 p-4 rounded select-none">
-        <%= for {row, y} <- Enum.with_index(@map_cells) do %>
-          <div>
+    <div
+      class="font-mono text-sm leading-none bg-gray-900 text-gray-300 p-4 rounded select-none shrink-0"
+      style={"width: calc(#{@map_width}ch + 2rem);"}
+    >
+      <div class="relative">
+        <div
+          id="map-layer"
+          style={"display: grid; grid-template-columns: repeat(#{@map_width}, 1ch);"}
+        >
+          <%= for {row, y} <- Enum.with_index(@map_cells) do %>
             <%= for {char, x} <- Enum.with_index(row) do %>
-              <% mob_symbol = Entities.mob_symbol_at(@entities, {x, y}) %>
-              <%= cond do %>
-                <% my_position(assigns) == {x, y} -> %>
-                  <span
-                    data-entity="player"
-                    class="text-yellow-300 font-bold cursor-pointer"
-                    phx-click="tile-click"
-                    phx-value-x={x}
-                    phx-value-y={y}
-                  >
-                    @
-                  </span>
-                <% mob_symbol != nil -> %>
-                  <span
-                    data-entity="mob"
-                    class="text-red-400 font-bold cursor-pointer"
-                    phx-click="tile-click"
-                    phx-value-x={x}
-                    phx-value-y={y}
-                  >
-                    {mob_symbol}
-                  </span>
-                <% Entities.players_at(@entities, {x, y}) != [] -> %>
-                  <span
-                    data-entity="other-player"
-                    class="text-cyan-300 font-bold cursor-pointer"
-                    phx-click="tile-click"
-                    phx-value-x={x}
-                    phx-value-y={y}
-                  >
-                    @
-                  </span>
-                <% true -> %>
-                  <span
-                    class="cursor-pointer"
-                    phx-click="tile-click"
-                    phx-value-x={x}
-                    phx-value-y={y}
-                  >
-                    {char}
-                  </span>
-              <% end %>
+              <span
+                class="cursor-pointer"
+                phx-click="tile-click"
+                phx-value-x={x}
+                phx-value-y={y}
+              >
+                {char}
+              </span>
             <% end %>
-          </div>
-        <% end %>
+          <% end %>
+        </div>
+        <div
+          id="entity-layer"
+          class="absolute inset-0 pointer-events-none"
+          style={"display: grid; grid-template-columns: repeat(#{@map_width}, 1ch); grid-template-rows: repeat(#{@map_height}, 1em);"}
+        >
+          <%= for {id, %{pos: {x, y}, type: type, name: name}} <- @entities.map do %>
+            <span
+              data-entity={entity_type(type, id, @user_id)}
+              class={[
+                "font-bold cursor-pointer pointer-events-auto",
+                entity_color(type, id, @user_id),
+                if(id == @user_id, do: "z-10")
+              ]}
+              style={"grid-column: #{x + 1}; grid-row: #{y + 1};"}
+              phx-click="tile-click"
+              phx-value-x={x}
+              phx-value-y={y}
+            >
+              {entity_symbol(type, name)}
+            </span>
+          <% end %>
+        </div>
       </div>
-      <div id="player-position" class="mt-2 font-mono text-sm text-gray-400">
+      <div id="player-position" class="mt-2 text-gray-400">
         <% {px, py} = my_position(assigns) %> Position: {"{#{px}, #{py}}"}
       </div>
-      <div id="player-hp" class="mt-2 font-mono text-sm text-gray-300">
+      <div id="player-hp" class="mt-2">
         <% hp = Gameserver.Stat.effective(@player_stats.hp, @player_stats) %>
         <% max_hp = Gameserver.Stat.effective(@player_stats.max_hp, @player_stats) %> HP {hp}/{max_hp}
         <div class="w-full bg-gray-700 rounded-full h-2.5 mt-1">
@@ -69,7 +63,7 @@
         id="combat-log"
         phx-update="stream"
         phx-hook="ScrollBottom"
-        class="mt-2 font-mono text-sm text-gray-300 bg-gray-800 rounded p-3 h-36 overflow-y-auto"
+        class="mt-2 bg-gray-800 rounded p-3 h-36 overflow-y-auto"
       >
         <div :for={{id, entry} <- @streams.combat_log} id={id} class="py-0.5">
           {entry.message}
@@ -88,7 +82,7 @@
               data-ability-id={Atom.to_string(ability.id)}
               disabled={not ready}
               class={[
-                "flex-1 h-8 px-2 text-xs font-mono text-gray-100 rounded truncate",
+                "flex-1 h-8 px-2 text-xs text-gray-100 rounded truncate",
                 if(ready,
                   do: "bg-gray-700 hover:bg-gray-600",
                   else: "bg-gray-700 opacity-50 cursor-not-allowed"
