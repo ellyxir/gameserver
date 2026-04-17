@@ -27,7 +27,16 @@ defmodule Mix.Tasks.Bench.Load do
   @impl Mix.Task
   @spec run([String.t()]) :: :ok
   def run(args) do
-    {players, move_interval, duration, ramp_rate} = parse_args(args)
+    {players, move_interval, duration, ramp_rate, map_size} = parse_args(args)
+
+    if map_size do
+      Application.put_env(:gameserver, :map_width, map_size)
+      Application.put_env(:gameserver, :map_height, map_size)
+      Application.put_env(:gameserver, :map_room_count, max(2, div(map_size, 5)))
+      Application.put_env(:gameserver, :map_room_dim_min, 3)
+      Application.put_env(:gameserver, :map_room_dim_max, max(3, div(map_size, 4)))
+      Application.put_env(:gameserver, :mob_count, max(1, div(map_size, 5)))
+    end
 
     enable_server()
     Mix.Task.run("app.start")
@@ -50,8 +59,7 @@ defmodule Mix.Tasks.Bench.Load do
     )
 
     Mix.shell().info("joining players at #{ramp_rate}/s...")
-    player_pids = spawn_players(players, port, move_interval, ramp_rate)
-    joined_count = await_joins(player_pids, players)
+    {player_pids, joined_count} = spawn_and_join_players(players, port, move_interval, ramp_rate)
 
     Mix.shell().info("#{joined_count}/#{players} players connected")
     Mix.shell().info("running load test for #{duration}s...")
@@ -79,7 +87,7 @@ defmodule Mix.Tasks.Bench.Load do
 
   @spec parse_args([String.t()]) ::
           {players :: pos_integer(), move_interval :: pos_integer(), duration :: pos_integer(),
-           ramp_rate :: pos_integer()}
+           ramp_rate :: pos_integer(), map_size :: pos_integer() | nil}
   defp parse_args(args) do
     {opts, _, invalid} =
       OptionParser.parse(args,
@@ -87,7 +95,8 @@ defmodule Mix.Tasks.Bench.Load do
           players: :integer,
           move_interval: :integer,
           duration: :integer,
-          ramp_rate: :integer
+          ramp_rate: :integer,
+          map_size: :integer
         ]
       )
 
@@ -99,8 +108,9 @@ defmodule Mix.Tasks.Bench.Load do
     move_interval = Keyword.get(opts, :move_interval, Gameserver.WorldServer.move_cooldown_ms())
     duration = Keyword.get(opts, :duration, 60)
     ramp_rate = Keyword.get(opts, :ramp_rate, 10)
+    map_size = Keyword.get(opts, :map_size)
 
-    {players, move_interval, duration, ramp_rate}
+    {players, move_interval, duration, ramp_rate, map_size}
   end
 
   @spec enable_server() :: :ok
@@ -116,29 +126,40 @@ defmodule Mix.Tasks.Bench.Load do
     )
   end
 
-  @spec spawn_players(
+  @spec spawn_and_join_players(
           players :: pos_integer(),
           port :: pos_integer(),
           move_interval :: pos_integer(),
           ramp_rate :: pos_integer()
-        ) :: [pid()]
-  defp spawn_players(players, port, move_interval, ramp_rate) do
+        ) :: {pids :: [pid()], joined :: non_neg_integer()}
+  defp spawn_and_join_players(players, port, move_interval, ramp_rate) do
     delay_ms = div(1000, ramp_rate)
+    join_timeout = 5000
 
     1..players
-    |> Enum.reduce([], fn i, pids ->
+    |> Enum.reduce({[], 0}, fn i, {pids, joined} ->
       if i > 1, do: Process.sleep(delay_ms)
 
       case start_player(i, port, move_interval) do
         {:ok, pid} ->
-          [pid | pids]
+          receive do
+            {:sim_player_joined, _user_id} ->
+              new_joined = joined + 1
+              ts = DateTime.utc_now() |> Calendar.strftime("%H:%M:%S")
+              Mix.shell().info("#{ts} #{new_joined}/#{players} joined")
+              {[pid | pids], new_joined}
+          after
+            join_timeout ->
+              Mix.shell().error("player #{i} timed out joining")
+              {[pid | pids], joined}
+          end
 
         {:error, reason} ->
           Mix.shell().error("player #{i} failed to start: #{inspect(reason)}")
-          pids
+          {pids, joined}
       end
     end)
-    |> Enum.reverse()
+    |> then(fn {pids, joined} -> {Enum.reverse(pids), joined} end)
   end
 
   @spec start_player(
@@ -149,29 +170,6 @@ defmodule Mix.Tasks.Bench.Load do
           {:ok, pid()} | {:error, term()}
   defp start_player(index, port, move_interval) do
     SimPlayer.start(index, port: port, move_interval_ms: move_interval, caller: self())
-  end
-
-  @spec await_joins(player_pids :: [pid()], expected :: pos_integer()) :: non_neg_integer()
-  defp await_joins(_player_pids, expected) do
-    deadline = System.monotonic_time(:millisecond) + expected * 500 + 5000
-
-    Enum.reduce_while(1..expected, 0, fn _, count ->
-      remaining = deadline - System.monotonic_time(:millisecond)
-
-      if remaining <= 0 do
-        Mix.shell().error("timed out waiting for joins (#{count}/#{expected})")
-        {:halt, count}
-      else
-        receive do
-          {:sim_player_joined, _user_id} ->
-            {:cont, count + 1}
-        after
-          remaining ->
-            Mix.shell().error("timed out waiting for joins (#{count}/#{expected})")
-            {:halt, count}
-        end
-      end
-    end)
   end
 
   # :scheduler.utilization(1) blocks for 1 second per call, so
