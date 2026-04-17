@@ -49,10 +49,12 @@ defmodule Mix.Tasks.Bench.Load do
       "load test: #{players} players, #{move_interval}ms moves, #{duration}s duration"
     )
 
+    Mix.shell().info("joining players at #{ramp_rate}/s...")
     player_pids = spawn_players(players, port, move_interval, ramp_rate)
     joined_count = await_joins(player_pids, players)
 
     Mix.shell().info("#{joined_count}/#{players} players connected")
+    Mix.shell().info("running load test for #{duration}s...")
 
     sample_beam_metrics(table, duration)
 
