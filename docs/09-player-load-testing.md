@@ -4,7 +4,7 @@ baseline measurements of server behavior under concurrent player load.
 measured with `mix bench.load` which connects simulated players over
 real websockets to the liveview, joins the game, and moves around.
 
-see issue #125 and pr (TBD) for when this was built.
+see issue #125 and pr #126 for when this was built.
 
 ## why websockets and not direct genserver calls
 
