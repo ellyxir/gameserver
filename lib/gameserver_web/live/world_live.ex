@@ -112,12 +112,16 @@ defmodule GameserverWeb.WorldLive do
   end
 
   defp invoke_ability(socket, %Ability{id: id, range: range}) when range > 0 do
+    user_id = socket.assigns.user_id
+
     case socket.assigns.target_id do
       nil ->
+        # try using ability on self since no target
+        CombatServer.use_ability(user_id, user_id, id)
         {:noreply, socket}
 
       target_id ->
-        CombatServer.use_ability(socket.assigns.user_id, target_id, id)
+        CombatServer.use_ability(user_id, target_id, id)
         {:noreply, socket}
     end
   end

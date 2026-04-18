@@ -6,9 +6,10 @@ defmodule Gameserver.Abilities do
   alias Gameserver.Ability
   alias Gameserver.Effects.DirectDmg
   alias Gameserver.Effects.DoT
+  alias Gameserver.Effects.Heal
   alias Gameserver.Effects.StatBuff
 
-  @player_abilities [:melee_strike, :poison_strike, :upper_cut, :battle_shout, :fortify]
+  @player_abilities [:melee_strike, :poison_strike, :upper_cut, :battle_shout, :heal, :fortify]
 
   @doc "Returns the default ability list for player entities."
   @spec player_abilities() :: [atom()]
@@ -76,6 +77,18 @@ defmodule Gameserver.Abilities do
        range: 0,
        cooldown_ms: 5000,
        effects: [{StatBuff, %{stat: :con, amount: 2}}]
+     }}
+  end
+
+  def get(:heal) do
+    {:ok,
+     %Ability{
+       id: :heal,
+       name: "Heal",
+       tags: [:magic, :divine],
+       range: 3,
+       cooldown_ms: 5000,
+       effects: [{Heal, %{base: 5}}]
      }}
   end
 

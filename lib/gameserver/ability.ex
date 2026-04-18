@@ -11,8 +11,21 @@ defmodule Gameserver.Ability do
 
   @typep effect_entry() :: {module(), map()}
 
+  @typedoc """
+  Non standardised list of tags for abilities
+  Future use - factored into combat damage (eg resistance to fire)
+  """
   @type tag() ::
-          :physical | :melee | :buff | :debuff | :fire | :magic | :dot | :item | :consumable
+          :physical
+          | :melee
+          | :buff
+          | :debuff
+          | :fire
+          | :magic
+          | :divine
+          | :dot
+          | :item
+          | :consumable
 
   @typedoc "An ability definition"
   @type t() :: %__MODULE__{
