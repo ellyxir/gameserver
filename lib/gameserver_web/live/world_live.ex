@@ -82,11 +82,19 @@ defmodule GameserverWeb.WorldLive do
     "ArrowRight" => :east
   }
 
+  @ability_hotkeys Map.new(1..9, fn n -> {Integer.to_string(n), n - 1} end)
+
   @impl Phoenix.LiveView
   def handle_event("keydown", %{"key" => key}, socket) do
-    case Map.get(@key_to_direction, key) do
-      nil -> {:noreply, socket}
-      direction -> move_player(socket, direction)
+    cond do
+      direction = Map.get(@key_to_direction, key) ->
+        move_player(socket, direction)
+
+      slot = Map.get(@ability_hotkeys, key) ->
+        use_ability_by_slot(socket, slot)
+
+      true ->
+        {:noreply, socket}
     end
   end
 
@@ -101,6 +109,24 @@ defmodule GameserverWeb.WorldLive do
     case Enum.find(socket.assigns.abilities, fn a -> Atom.to_string(a.id) == ability_str end) do
       nil -> {:noreply, socket}
       ability -> invoke_ability(socket, ability)
+    end
+  end
+
+  @spec use_ability_by_slot(Phoenix.LiveView.Socket.t(), slot :: non_neg_integer()) ::
+          {:noreply, Phoenix.LiveView.Socket.t()}
+  defp use_ability_by_slot(socket, slot) do
+    case Enum.at(socket.assigns.abilities, slot) do
+      nil ->
+        {:noreply, socket}
+
+      %Ability{id: id} = ability ->
+        seconds = Map.get(socket.assigns.ability_seconds_remaining, id, 0)
+
+        if seconds == 0 do
+          invoke_ability(socket, ability)
+        else
+          {:noreply, socket}
+        end
     end
   end
 

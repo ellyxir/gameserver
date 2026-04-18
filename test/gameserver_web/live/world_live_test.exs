@@ -470,7 +470,61 @@ defmodule GameserverWeb.WorldLiveTest do
       refute has_element?(view, "#combat-log div", "for 3")
     end
 
-    test "renders a button for first 5 player ability", %{conn: conn} do
+    test "number hotkey triggers ability by slot index", %{conn: conn} do
+      {:ok, user} = User.new("hotkeyer")
+      {:ok, {px, py}} = WorldServer.join_user(user)
+
+      alias Gameserver.Entity
+
+      mob = Entity.new(name: "goblin", type: :mob, pos: {px + 1, py})
+      {:ok, _pos} = WorldServer.join_entity(mob)
+
+      {:ok, view, _html} = live(conn, ~p"/world?user_id=#{user.id}")
+
+      # collide to set target
+      render_keydown(view, "keydown", %{"key" => "d"})
+
+      # press "3" to use upper_cut (3rd ability, 3 damage)
+      render_keydown(view, "keydown", %{"key" => "3"})
+
+      assert has_element?(view, "#combat-log div", "for 3")
+    end
+
+    test "number hotkey for empty slot is a no-op", %{conn: conn} do
+      {:ok, user} = User.new("emptyslot")
+      {:ok, _pos} = WorldServer.join_user(user)
+
+      {:ok, view, _html} = live(conn, ~p"/world?user_id=#{user.id}")
+
+      # press "9" - no ability in that slot
+      render_keydown(view, "keydown", %{"key" => "9"})
+
+      refute has_element?(view, "#combat-log div", "You hit")
+    end
+
+    test "number hotkey on cooldown is a no-op", %{conn: conn} do
+      {:ok, user} = User.new("coolkeyer")
+      {:ok, {px, py}} = WorldServer.join_user(user)
+
+      alias Gameserver.Entity
+
+      mob = Entity.new(name: "goblin", type: :mob, pos: {px + 1, py})
+      {:ok, _pos} = WorldServer.join_entity(mob)
+
+      {:ok, view, _html} = live(conn, ~p"/world?user_id=#{user.id}")
+
+      # collide to set target and trigger first attack
+      render_keydown(view, "keydown", %{"key" => "d"})
+
+      # press "1" again immediately - melee_strike should be on cooldown
+      render_keydown(view, "keydown", %{"key" => "1"})
+
+      # only one "You hit" should appear (from the collision), not two
+      html = render(view)
+      assert length(Regex.scan(~r/You hit/, html)) == 1
+    end
+
+    test "renders a button for first 6 player abilities", %{conn: conn} do
       {:ok, user} = User.new("buttoner")
       {:ok, _pos} = WorldServer.join_user(user)
 
@@ -480,13 +534,13 @@ defmodule GameserverWeb.WorldLiveTest do
 
       {:ok, view, _html} = live(conn, ~p"/world?user_id=#{user.id}")
 
-      for ability_id <- Enum.take(entity.abilities, 5) do
+      for ability_id <- Enum.take(entity.abilities, 6) do
         selector = ~s(#ability-bar button[data-ability-id="#{ability_id}"])
         assert has_element?(view, selector), "expected ability button for #{ability_id}"
       end
     end
 
-    test "renders 5 ability slots even when player has fewer abilities", %{conn: conn} do
+    test "renders 6 ability slots even when player has fewer abilities", %{conn: conn} do
       {:ok, user} = User.new("sparse")
       {:ok, _pos} = WorldServer.join_user(user)
 
@@ -506,10 +560,10 @@ defmodule GameserverWeb.WorldLiveTest do
       assert has_element?(view, ~s(#ability-bar button[data-ability-id="#{a}"]))
       assert has_element?(view, ~s(#ability-bar button[data-ability-id="#{b}"]))
 
-      # 5th slot exists, meaning the bar pads empty slots up to 5
-      assert has_element?(view, "#ability-bar > *:nth-child(5)")
-      # no 6th slot though
-      refute has_element?(view, "#ability-bar > *:nth-child(6)")
+      # 6th slot exists, meaning the bar pads empty slots up to 6
+      assert has_element?(view, "#ability-bar > *:nth-child(6)")
+      # no 7th slot though
+      refute has_element?(view, "#ability-bar > *:nth-child(7)")
     end
 
     test "shows message when mob attacks player", %{conn: conn} do
