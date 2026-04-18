@@ -12,6 +12,7 @@ defmodule Gameserver.Effects.DirectDmg do
   alias Gameserver.Stats
 
   @spec valid?(args :: map(), source :: Entity.t(), target :: Entity.t()) :: boolean()
+  def valid?(_args, %Entity{id: id}, %Entity{id: id}), do: false
   def valid?(_args, _source, %Entity{stats: %{dead: false}}), do: true
   def valid?(_args, _source, %Entity{stats: %{dead: true}}), do: false
 
