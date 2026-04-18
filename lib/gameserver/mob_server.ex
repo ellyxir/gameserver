@@ -81,14 +81,16 @@ defmodule Gameserver.MobServer do
 
   @mob_abilities [:melee_strike, :poison_strike]
 
+  @doc "Spawns a new mob under this supervisor and joins it to the world."
   @spec spawn_mob(GenServer.server(), String.t(), GameMap.coord(), GenServer.server()) ::
           DynamicSupervisor.on_start_child()
-  defp spawn_mob(supervisor, name, pos, world_server) do
+  def spawn_mob(supervisor, name, pos, world_server) do
     mob = %Gameserver.Mob{
       id: UUID.generate(),
       name: name,
       spawn_pos: pos,
       abilities: @mob_abilities,
+      mob_server: supervisor,
       world_server: world_server
     }
 

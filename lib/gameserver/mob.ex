@@ -27,6 +27,7 @@ defmodule Gameserver.Mob do
     :attack_timer,
     abilities: [],
     combat_server: CombatServer,
+    mob_server: Gameserver.MobServer,
     world_server: WorldServer
   ]
 
@@ -39,6 +40,7 @@ defmodule Gameserver.Mob do
           attack_timer: reference() | nil,
           abilities: Entity.ability_list(),
           combat_server: GenServer.server(),
+          mob_server: GenServer.server(),
           world_server: GenServer.server()
         }
 
