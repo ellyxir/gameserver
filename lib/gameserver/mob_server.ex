@@ -14,21 +14,23 @@ defmodule Gameserver.MobServer do
   @typedoc false
   @typep option() ::
            {:world_server, GenServer.server()}
+           | {:mob_count, non_neg_integer()}
            | {:name, Supervisor.name() | nil}
            | {:strategy, DynamicSupervisor.strategy()}
            | {:max_children, non_neg_integer() | :infinity}
 
-  @doc "Starts the MobServer. Accepts `:world_server` option, defaults to WorldServer."
+  @doc "Starts the MobServer. Accepts `:world_server` and `:mob_count` options."
   @spec start_link([option()]) :: Supervisor.on_start()
   def start_link(opts \\ []) do
-    {world_server, sup_opts} = Keyword.pop(opts, :world_server, WorldServer)
-    DynamicSupervisor.start_link(__MODULE__, world_server, sup_opts)
+    {world_server, opts} = Keyword.pop(opts, :world_server, WorldServer)
+    {mob_count, sup_opts} = Keyword.pop(opts, :mob_count)
+    DynamicSupervisor.start_link(__MODULE__, {world_server, mob_count}, sup_opts)
   end
 
   # dialyzer can't track opaque types (MapSet) through Enum.reduce accumulators
   @dialyzer {:no_opaque, init: 1}
   @impl DynamicSupervisor
-  def init(world_server) do
+  def init({world_server, mob_count_override}) do
     sup = self()
 
     # can't call DynamicSupervisor.start_child/2 from init since we're not up yet
@@ -37,7 +39,11 @@ defmodule Gameserver.MobServer do
       map = %GameMap{rooms: rooms} = WorldServer.get_map(world_server)
 
       # distribute mobs across rooms, cycling through available rooms
-      mob_count = Application.get_env(:gameserver, :mob_count, 35)
+      mob_count =
+        case mob_count_override do
+          nil -> Application.get_env(:gameserver, :mob_count, 35)
+          n -> n
+        end
 
       @default_mob_names
       |> Stream.cycle()
@@ -81,14 +87,19 @@ defmodule Gameserver.MobServer do
 
   @mob_abilities [:melee_strike, :poison_strike]
 
-  @spec spawn_mob(GenServer.server(), String.t(), GameMap.coord(), GenServer.server()) ::
+  @respawn_delay_ms 5000
+
+  @doc "Spawns a new mob under this supervisor and joins it to the world."
+  @spec spawn_mob(GenServer.server(), String.t(), GameMap.coord(), GenServer.server(), keyword()) ::
           DynamicSupervisor.on_start_child()
-  defp spawn_mob(supervisor, name, pos, world_server) do
+  def spawn_mob(supervisor, name, pos, world_server, opts \\ []) do
     mob = %Gameserver.Mob{
       id: UUID.generate(),
       name: name,
       spawn_pos: pos,
       abilities: @mob_abilities,
+      mob_server: supervisor,
+      respawn_delay_ms: Keyword.get(opts, :respawn_delay_ms, @respawn_delay_ms),
       world_server: world_server
     }
 

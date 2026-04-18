@@ -15,6 +15,7 @@ defmodule Gameserver.Mob do
   alias Gameserver.Cooldowns
   alias Gameserver.Entity
   alias Gameserver.Map, as: GameMap
+  alias Gameserver.MobServer
   alias Gameserver.UUID
   alias Gameserver.WorldServer
 
@@ -27,6 +28,8 @@ defmodule Gameserver.Mob do
     :attack_timer,
     abilities: [],
     combat_server: CombatServer,
+    mob_server: Gameserver.MobServer,
+    respawn_delay_ms: 5000,
     world_server: WorldServer
   ]
 
@@ -39,6 +42,8 @@ defmodule Gameserver.Mob do
           attack_timer: reference() | nil,
           abilities: Entity.ability_list(),
           combat_server: GenServer.server(),
+          mob_server: GenServer.server(),
+          respawn_delay_ms: non_neg_integer(),
           world_server: GenServer.server()
         }
 
@@ -62,11 +67,20 @@ defmodule Gameserver.Mob do
     {:ok, mob}
   end
 
+  @join_retry_ms 1000
+
   @impl GenServer
   def handle_info(:join_world, state) do
     entity = Gameserver.Entity.new(state)
-    {:ok, _pos} = WorldServer.join_entity(entity, state.world_server)
-    {:noreply, state}
+
+    case WorldServer.join_entity(entity, state.world_server) do
+      {:ok, _pos} ->
+        {:noreply, state}
+
+      {:error, :collision} ->
+        Process.send_after(self(), :join_world, @join_retry_ms)
+        {:noreply, state}
+    end
   end
 
   @attack_interval_ms 2000
@@ -81,6 +95,15 @@ defmodule Gameserver.Mob do
 
     # despawn
     WorldServer.leave(my_id, state.world_server)
+
+    # respawn after delay
+    spawn(fn ->
+      Process.sleep(state.respawn_delay_ms)
+
+      MobServer.spawn_mob(state.mob_server, state.name, state.spawn_pos, state.world_server,
+        respawn_delay_ms: state.respawn_delay_ms
+      )
+    end)
 
     # kill process
     {:stop, :normal, %{state | aggro_target: attacker_id, attack_timer: nil}}

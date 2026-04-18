@@ -93,4 +93,23 @@ defmodule Gameserver.MobServerTest do
       assert length(mob_nodes(server)) == 3
     end
   end
+
+  describe "spawn_mob/4" do
+    test "adds a new mob to the world", %{server: server} do
+      Phoenix.PubSub.subscribe(Gameserver.PubSub, WorldServer.presence_topic())
+      mob_server = start_supervised!({MobServer, world_server: server, mob_count: 0})
+
+      map = WorldServer.get_map(server)
+      [room | _] = map.rooms
+      pos = GameMap.random_tile_in_room(map, room)
+
+      assert {:ok, _pid} = MobServer.spawn_mob(mob_server, "troll", pos, server)
+
+      assert_receive {:entity_joined, _}, 1000
+      mobs = mob_nodes(server)
+      assert length(mobs) == 1
+      [{_id, node}] = mobs
+      assert node.name == "troll"
+    end
+  end
 end
