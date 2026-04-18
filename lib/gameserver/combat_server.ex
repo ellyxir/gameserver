@@ -63,7 +63,13 @@ defmodule Gameserver.CombatServer do
   """
   @spec use_ability(source :: UUID.t(), target :: UUID.t(), ability :: atom(), GenServer.server()) ::
           {:ok, Cooldowns.cooldown()}
-          | {:error, :not_found | :out_of_range | :missing_ability | :on_cooldown | :target_dead}
+          | {:error,
+             :not_found
+             | :out_of_range
+             | :missing_ability
+             | :on_cooldown
+             | :target_dead
+             | :no_valid_effects}
   def use_ability(source_id, target_id, ability_id, server \\ __MODULE__)
       when is_atom(ability_id) do
     GenServer.call(server, {:use_ability, source_id, target_id, ability_id})
@@ -92,25 +98,29 @@ defmodule Gameserver.CombatServer do
          {:has_ability, true} <- {:has_ability, ability_id in source.abilities},
          :ok <- Cooldowns.check(source.cooldowns, ability_id),
          :ok <- check_adjacent(source, target, ability.range) do
-      target_hp_before = Stat.effective(target.stats.hp, target.stats)
-
       transforms = execute_ability(ability, source, target)
-      update_fn = build_entity_update_fn(transforms)
 
-      {:ok, target} =
-        EntityServer.update_entity(
-          target_id,
-          update_fn,
-          entity_server
-        )
+      if transforms == [] do
+        {:reply, {:error, :no_valid_effects}, state}
+      else
+        target_hp_before = Stat.effective(target.stats.hp, target.stats)
+        update_fn = build_entity_update_fn(transforms)
 
-      start_cooldown(source_id, ability, entity_server)
+        {:ok, target} =
+          EntityServer.update_entity(
+            target_id,
+            update_fn,
+            entity_server
+          )
 
-      target_hp_after = Stat.effective(target.stats.hp, target.stats)
-      damage_taken = target_hp_before - target_hp_after
-      broadcast_combat_event(source, target, damage_taken, target_hp_after)
+        start_cooldown(source_id, ability, entity_server)
 
-      {:reply, {:ok, {:use_ability, ability.cooldown_ms}}, state}
+        target_hp_after = Stat.effective(target.stats.hp, target.stats)
+        damage_taken = target_hp_before - target_hp_after
+        broadcast_combat_event(source, target, damage_taken, target_hp_after)
+
+        {:reply, {:ok, {:use_ability, ability.cooldown_ms}}, state}
+      end
     else
       {:error, :cooldown} -> {:reply, {:error, :on_cooldown}, state}
       {:error, reason} -> {:reply, {:error, reason}, state}

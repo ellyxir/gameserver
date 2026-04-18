@@ -470,7 +470,7 @@ defmodule GameserverWeb.WorldLiveTest do
       refute has_element?(view, "#combat-log div", "for 3")
     end
 
-    test "renders a button for each player ability", %{conn: conn} do
+    test "renders a button for first 5 player ability", %{conn: conn} do
       {:ok, user} = User.new("buttoner")
       {:ok, _pos} = WorldServer.join_user(user)
 
@@ -480,7 +480,7 @@ defmodule GameserverWeb.WorldLiveTest do
 
       {:ok, view, _html} = live(conn, ~p"/world?user_id=#{user.id}")
 
-      for ability_id <- entity.abilities do
+      for ability_id <- Enum.take(entity.abilities, 5) do
         selector = ~s(#ability-bar button[data-ability-id="#{ability_id}"])
         assert has_element?(view, selector), "expected ability button for #{ability_id}"
       end

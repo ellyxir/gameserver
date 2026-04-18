@@ -366,11 +366,11 @@ defmodule Gameserver.CombatServerTest do
                CombatServer.use_ability(user.id, user.id, :battle_shout, ctx.combat_server)
     end
 
-    test "self-cast of a range-1 ability succeeds (same position is in range)", ctx do
+    test "self-cast of a damage ability is rejected", ctx do
       {:ok, user} = User.new("alice")
       {:ok, _pos} = WorldServer.join_user(user, ctx.world_server)
 
-      assert {:ok, _} =
+      assert {:error, :no_valid_effects} =
                CombatServer.use_ability(user.id, user.id, :melee_strike, ctx.combat_server)
     end
 

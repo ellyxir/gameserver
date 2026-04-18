@@ -14,8 +14,17 @@ defmodule Gameserver.HpStat do
         }
 
   @spec apply_damage(t(), non_neg_integer()) :: t()
-  def apply_damage(%__MODULE__{base_stat: base_stat} = hp, damage) do
-    updated_hp = max(0, base_stat.base - damage)
+  def apply_damage(%__MODULE__{} = hp_stat, dmg) do
+    apply_delta(hp_stat, -dmg)
+  end
+
+  @doc """
+  applies the health change
+  positive delta will heal, negative will damage
+  """
+  @spec apply_delta(t(), integer()) :: t()
+  def apply_delta(%__MODULE__{base_stat: base_stat} = hp, delta) do
+    updated_hp = max(0, base_stat.base + delta)
     %{hp | base_stat: %{base_stat | base: updated_hp}}
   end
 end

@@ -23,6 +23,11 @@ defmodule Gameserver.Effects.DoTTest do
       target = make_entity(stats: [dead: true])
       refute DoT.valid?(%{base: 1, repeat_ms: 3000, kill_after_ms: 12_000}, source, target)
     end
+
+    test "returns false when source and target are the same entity" do
+      entity = make_entity()
+      refute DoT.valid?(%{base: 1, repeat_ms: 3000, kill_after_ms: 12_000}, entity, entity)
+    end
   end
 
   describe "apply/3" do

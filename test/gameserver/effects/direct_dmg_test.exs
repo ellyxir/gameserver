@@ -23,6 +23,11 @@ defmodule Gameserver.Effects.DirectDmgTest do
       target = make_entity(stats: [dead: true])
       refute DirectDmg.valid?(%{base: 10}, source, target)
     end
+
+    test "returns false when source and target are the same entity" do
+      entity = make_entity()
+      refute DirectDmg.valid?(%{base: 10}, entity, entity)
+    end
   end
 
   describe "apply/3" do
