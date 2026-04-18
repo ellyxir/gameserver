@@ -71,7 +71,7 @@
         </div>
       </div>
       <div id="ability-bar" class="mt-2 flex gap-2">
-        <%= for slot <- 0..4 do %>
+        <%= for slot <- 0..5 do %>
           <% ability = Enum.at(@abilities, slot) %>
           <%= if ability do %>
             <% seconds = Map.get(@ability_seconds_remaining, ability.id, 0) %>
@@ -83,7 +83,7 @@
               data-ability-id={Atom.to_string(ability.id)}
               disabled={not ready}
               class={[
-                "flex-1 h-8 px-2 text-xs text-gray-100 rounded truncate",
+                "flex-1 h-8 px-2 text-xs text-gray-100 rounded truncate relative",
                 if(ready,
                   do: "bg-gray-700 hover:bg-gray-600",
                   else: "bg-gray-700 opacity-50 cursor-not-allowed"
@@ -91,6 +91,9 @@
               ]}
               title={ability.name}
             >
+              <span class="absolute top-0 left-0.5 text-[9px] text-gray-400 leading-none">
+                {slot + 1}
+              </span>
               <%= if ready do %>
                 {ability.name}
               <% else %>
@@ -98,7 +101,11 @@
               <% end %>
             </button>
           <% else %>
-            <div class="flex-1 h-8 bg-gray-900 rounded"></div>
+            <div class="flex-1 h-8 bg-gray-900 rounded relative">
+              <span class="absolute top-0 left-0.5 text-[9px] text-gray-600 leading-none">
+                {slot + 1}
+              </span>
+            </div>
           <% end %>
         <% end %>
       </div>
