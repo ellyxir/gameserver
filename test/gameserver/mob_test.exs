@@ -138,6 +138,64 @@ defmodule Gameserver.MobTest do
       assert {:error, :not_found} = WorldServer.get_position(mob_id, ctx.world_server)
     end
 
+    test "dead mob respawns after delay", ctx do
+      mob_id = UUID.generate()
+      player_id = UUID.generate()
+
+      mob_server =
+        start_supervised!(
+          {Gameserver.MobServer, world_server: ctx.world_server, mob_count: 0},
+          id: :mob_server
+        )
+
+      player = Gameserver.Entity.new(id: player_id, name: "hero", type: :user)
+      {:ok, {px, py}} = WorldServer.join_entity(player, ctx.world_server)
+
+      spawn_pos = {px + 1, py}
+
+      mob = %Mob{
+        id: mob_id,
+        name: "goblin",
+        spawn_pos: spawn_pos,
+        world_server: ctx.world_server,
+        combat_server: ctx.combat_server,
+        mob_server: mob_server,
+        respawn_delay_ms: 100
+      }
+
+      {:ok, pid} = Mob.start_link(mob)
+      _ = :sys.get_state(pid)
+
+      Phoenix.PubSub.subscribe(Gameserver.PubSub, WorldServer.presence_topic())
+
+      event = %CombatEvent{
+        attacker_id: player_id,
+        defender_id: mob_id,
+        damage: 50,
+        defender_hp: 0,
+        dead: true
+      }
+
+      ref = Process.monitor(pid)
+      send(pid, {:combat_event, event})
+      assert_receive {:DOWN, ^ref, :process, ^pid, :normal}
+
+      # mob should be gone
+      assert {:error, :not_found} = WorldServer.get_position(mob_id, ctx.world_server)
+
+      # wait for respawn (100ms delay + buffer)
+      assert_receive {:entity_joined, _new_entity}, 1000
+
+      # a new mob with the same name should exist at the spawn position
+      nodes =
+        WorldServer.world_nodes(ctx.world_server)
+        |> Enum.filter(fn {_id, node} -> node.name == "goblin" and node.type == :mob end)
+
+      assert length(nodes) == 1
+      [{_new_id, node}] = nodes
+      assert node.pos == spawn_pos
+    end
+
     test "clears aggro when target leaves the world", ctx do
       mob_id = UUID.generate()
       player_id = UUID.generate()

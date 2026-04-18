@@ -97,8 +97,7 @@ defmodule Gameserver.MobServerTest do
   describe "spawn_mob/4" do
     test "adds a new mob to the world", %{server: server} do
       Phoenix.PubSub.subscribe(Gameserver.PubSub, WorldServer.presence_topic())
-      mob_server = start_supervised!({MobServer, world_server: server})
-      wait_for_mobs(3)
+      mob_server = start_supervised!({MobServer, world_server: server, mob_count: 0})
 
       map = WorldServer.get_map(server)
       [room | _] = map.rooms
@@ -108,8 +107,9 @@ defmodule Gameserver.MobServerTest do
 
       assert_receive {:entity_joined, _}, 1000
       mobs = mob_nodes(server)
-      assert length(mobs) == 4
-      assert Enum.any?(mobs, fn {_id, node} -> node.name == "troll" end)
+      assert length(mobs) == 1
+      [{_id, node}] = mobs
+      assert node.name == "troll"
     end
   end
 end
