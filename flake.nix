@@ -19,6 +19,7 @@
         packages = with pkgs; [
           beam28Packages.elixir_1_20
           beam28Packages.elixir-ls
+          git
         ];
       };
     };
