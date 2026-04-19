@@ -156,6 +156,13 @@ defmodule Gameserver.WorldServer do
     GenServer.call(server, {:move, id, direction})
   end
 
+  @doc "Updates an entity's position directly, bypassing cooldown and entity collision checks."
+  @spec update_position(UUID.t(), GameMap.coord(), GenServer.server()) ::
+          :ok | {:error, :not_found | :collision}
+  def update_position(id, pos, server \\ __MODULE__) do
+    GenServer.call(server, {:update_position, id, pos})
+  end
+
   @doc """
   Returns the PubSub topic for presence updates.
 
@@ -335,6 +342,26 @@ defmodule Gameserver.WorldServer do
       {:reply, {:ok, destination}, %{state | entities: new_entities}}
     else
       {:error, reason} -> {:reply, {:error, reason}, state}
+    end
+  end
+
+  @impl GenServer
+  def handle_call(
+        {:update_position, id, pos},
+        _from,
+        %__MODULE__{entities: entities, map: map} = state
+      ) do
+    with {:ok, world_node} <- get_world_node(entities, id),
+         false <- GameMap.collision?(map, pos) do
+      {:ok, _} =
+        EntityServer.update_entity(id, fn e -> %{e | pos: pos} end, state.entity_server)
+
+      broadcast_movement({:entity_moved, id, pos})
+      new_entities = Map.put(entities, id, %{world_node | pos: pos})
+      {:reply, :ok, %{state | entities: new_entities}}
+    else
+      {:error, :not_found} -> {:reply, {:error, :not_found}, state}
+      true -> {:reply, {:error, :collision}, state}
     end
   end
 

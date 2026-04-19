@@ -109,6 +109,21 @@
           <% end %>
         <% end %>
       </div>
+
+      <%= if @dead do %>
+        <div class="absolute inset-0 bg-black/80 flex items-center justify-center z-20 rounded">
+          <div class="text-center">
+            <p class="text-red-400 text-xl mb-4">You are dead...</p>
+            <button
+              type="button"
+              phx-click="player_respawn"
+              class="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-gray-100 rounded"
+            >
+              Respawn
+            </button>
+          </div>
+        </div>
+      <% end %>
     </div>
 
     <div>
