@@ -22,6 +22,8 @@
           inotify-tools
           watchman
           git
+          caddy
+          helix
         ];
       };
     };
