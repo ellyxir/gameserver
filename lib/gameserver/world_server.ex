@@ -328,6 +328,7 @@ defmodule Gameserver.WorldServer do
     with {:ok, world_node} <- get_world_node(entities, id),
          {:ok, entity} <- EntityServer.get_entity(id, state.entity_server),
          :ok <- Cooldowns.check(entity.cooldowns, :move),
+         :ok <- Entity.can_move(entity),
          {:ok, destination} <- validate_move(id, world_node, direction, state) do
       :ok = apply_move(id, destination, state)
       new_entities = Map.put(entities, id, %{world_node | pos: destination})

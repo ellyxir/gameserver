@@ -598,6 +598,22 @@ defmodule Gameserver.WorldServerTest do
       assert {:ok, pos} = WorldServer.move(mob.id, :east, server)
       assert pos == {sx + 1, sy}
     end
+
+    test "dead entity cannot move", %{server: server, entity_server: entity_server} do
+      mob = Entity.new(name: "corpse", type: :mob)
+      {:ok, _pos} = WorldServer.join_entity(mob, server)
+
+      {:ok, _} =
+        EntityServer.update_entity(
+          mob.id,
+          fn entity ->
+            %{entity | stats: %{entity.stats | dead: true}}
+          end,
+          entity_server
+        )
+
+      assert {:error, :dead} = WorldServer.move(mob.id, :east, server)
+    end
   end
 
   describe "join_entity/2 with pre-set position" do
