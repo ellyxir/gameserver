@@ -15,6 +15,7 @@ defmodule Gameserver.Mob do
   alias Gameserver.CombatServer
   alias Gameserver.Cooldowns
   alias Gameserver.Entity
+  alias Gameserver.EntityServer
   alias Gameserver.Map, as: GameMap
   alias Gameserver.MobServer
   alias Gameserver.UUID
@@ -29,6 +30,7 @@ defmodule Gameserver.Mob do
     :attack_timer,
     abilities: [],
     combat_server: CombatServer,
+    entity_server: EntityServer,
     mob_server: Gameserver.MobServer,
     respawn_delay_ms: 5000,
     world_server: WorldServer
@@ -43,6 +45,7 @@ defmodule Gameserver.Mob do
           attack_timer: reference() | nil,
           abilities: Entity.ability_list(),
           combat_server: GenServer.server(),
+          entity_server: GenServer.server(),
           mob_server: GenServer.server(),
           respawn_delay_ms: non_neg_integer(),
           world_server: GenServer.server()
@@ -89,6 +92,13 @@ defmodule Gameserver.Mob do
   end
 
   @impl GenServer
+  def handle_info(:mob_move, %__MODULE__{aggro_target: target_id} = state)
+      when not is_nil(target_id) do
+    # dont move when we are aggro'd
+    Process.send_after(self(), :mob_move, jitter(@mob_move_ms, 1))
+    {:noreply, state}
+  end
+
   def handle_info(:mob_move, %__MODULE__{id: mob_id} = state) do
     # move in a random direction
     dir = Enum.random([:north, :south, :west, :east])
@@ -122,7 +132,8 @@ defmodule Gameserver.Mob do
       Process.sleep(state.respawn_delay_ms)
 
       MobServer.spawn_mob(state.mob_server, state.name, state.spawn_pos, state.world_server,
-        respawn_delay_ms: state.respawn_delay_ms
+        respawn_delay_ms: state.respawn_delay_ms,
+        entity_server: state.entity_server
       )
     end)
 
@@ -147,17 +158,26 @@ defmodule Gameserver.Mob do
   end
 
   def handle_info(:attack_target, %{aggro_target: target_id} = state) when target_id != nil do
-    case mob_action(state, target_id, state.combat_server) do
-      {:ok, _cooldown} ->
-        timer = Process.send_after(self(), :attack_target, @attack_interval_ms)
-        {:noreply, %{state | attack_timer: timer}}
+    result = EntityServer.get_entity(target_id, state.entity_server)
 
-      {:error, :on_cooldown} ->
-        # all abilities are on cooldown right now, reschedule and try again later
-        timer = Process.send_after(self(), :attack_target, @attack_interval_ms)
-        {:noreply, %{state | attack_timer: timer}}
+    case result do
+      {:ok, target} ->
+        case mob_action(state, target, state.combat_server) do
+          {:ok, _cooldown} ->
+            timer = Process.send_after(self(), :attack_target, @attack_interval_ms)
+            {:noreply, %{state | attack_timer: timer}}
 
-      {:error, _reason} ->
+          {:error, :on_cooldown} ->
+            # all abilities are on cooldown right now, reschedule and try again later
+            timer = Process.send_after(self(), :attack_target, @attack_interval_ms)
+            {:noreply, %{state | attack_timer: timer}}
+
+          {:error, _reason} ->
+            {:noreply, %{state | aggro_target: nil, attack_timer: nil}}
+        end
+
+      _ ->
+        # could not find the target entity, quit attacking
         {:noreply, %{state | aggro_target: nil, attack_timer: nil}}
     end
   end
@@ -181,16 +201,20 @@ defmodule Gameserver.Mob do
   # on :on_cooldown, retries with the remaining abilities.
   # returns {:ok, cooldown} on success, or {:error, reason} if no ability
   # could be used (all on cooldown, target dead, etc.)
-  @spec mob_action(t(), target_id :: UUID.t(), combat_server :: GenServer.server()) ::
+  @spec mob_action(t(), target :: Entity.t(), combat_server :: GenServer.server()) ::
           {:ok, Cooldowns.cooldown()} | {:error, term()}
   # base case: reached only via recursion below, after every ability returned
   # :on_cooldown. the empty-list case at handle_info catches the "mob never had
   # abilities" scenario earlier.
-  defp mob_action(%__MODULE__{abilities: []}, _target_id, _combat_server) do
+  defp mob_action(%__MODULE__{abilities: []}, _target, _combat_server) do
     {:error, :on_cooldown}
   end
 
-  defp mob_action(%__MODULE__{abilities: abilities} = mob, target_id, combat_server) do
+  defp mob_action(
+         %__MODULE__{abilities: abilities} = mob,
+         %Entity{id: target_id} = target,
+         combat_server
+       ) do
     ability_id = select_ability(mob)
 
     case CombatServer.use_ability(mob.id, target_id, ability_id, combat_server) do
@@ -199,7 +223,7 @@ defmodule Gameserver.Mob do
 
       {:error, :on_cooldown} ->
         updated_mob = %{mob | abilities: List.delete(abilities, ability_id)}
-        mob_action(updated_mob, target_id, combat_server)
+        mob_action(updated_mob, target, combat_server)
 
       {:error, reason} ->
         {:error, reason}

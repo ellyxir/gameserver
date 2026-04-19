@@ -42,6 +42,7 @@ defmodule Gameserver.MobTest do
         id: mob_id,
         name: "goblin",
         spawn_pos: floor_pos(ctx.world_server),
+        entity_server: ctx.entity_server,
         world_server: ctx.world_server
       }
 
@@ -76,6 +77,7 @@ defmodule Gameserver.MobTest do
         name: "goblin",
         spawn_pos: {px + 1, py},
         abilities: [:melee_strike],
+        entity_server: ctx.entity_server,
         world_server: ctx.world_server,
         combat_server: ctx.combat_server
       }
@@ -103,6 +105,71 @@ defmodule Gameserver.MobTest do
       assert player_hp == 9
     end
 
+    test "moves when not aggro'd", ctx do
+      mob_id = UUID.generate()
+
+      mob = %Mob{
+        id: mob_id,
+        name: "goblin",
+        spawn_pos: floor_pos(ctx.world_server),
+        entity_server: ctx.entity_server,
+        world_server: ctx.world_server
+      }
+
+      {:ok, pid} = Mob.start_link(mob)
+      _ = :sys.get_state(pid)
+
+      {:ok, pos_before} = WorldServer.get_position(mob_id, ctx.world_server)
+
+      # send multiple moves since random direction may hit a wall
+      for _ <- 1..10 do
+        send(pid, :mob_move)
+        _ = :sys.get_state(pid)
+      end
+
+      {:ok, pos_after} = WorldServer.get_position(mob_id, ctx.world_server)
+      assert pos_after != pos_before
+    end
+
+    test "does not move while aggro'd", ctx do
+      mob_id = UUID.generate()
+      player_id = UUID.generate()
+
+      player = Gameserver.Entity.new(id: player_id, name: "hero", type: :user)
+      {:ok, {px, py}} = WorldServer.join_entity(player, ctx.world_server)
+
+      mob = %Mob{
+        id: mob_id,
+        name: "goblin",
+        spawn_pos: {px + 1, py},
+        abilities: [:melee_strike],
+        entity_server: ctx.entity_server,
+        world_server: ctx.world_server,
+        combat_server: ctx.combat_server
+      }
+
+      {:ok, pid} = Mob.start_link(mob)
+      _ = :sys.get_state(pid)
+
+      {:ok, pos_before} = WorldServer.get_position(mob_id, ctx.world_server)
+
+      event = %CombatEvent{
+        attacker_id: player_id,
+        defender_id: mob_id,
+        damage: 5,
+        defender_hp: 95
+      }
+
+      send(pid, {:combat_event, event})
+      _ = :sys.get_state(pid)
+
+      send(pid, :mob_move)
+      _ = :sys.get_state(pid)
+
+      {:ok, pos_after} = WorldServer.get_position(mob_id, ctx.world_server)
+      assert pos_after == pos_before
+    end
+
     test "dead mob leaves the world", ctx do
       mob_id = UUID.generate()
       player_id = UUID.generate()
@@ -114,6 +181,7 @@ defmodule Gameserver.MobTest do
         id: mob_id,
         name: "goblin",
         spawn_pos: {px + 1, py},
+        entity_server: ctx.entity_server,
         world_server: ctx.world_server,
         combat_server: ctx.combat_server
       }
@@ -144,7 +212,8 @@ defmodule Gameserver.MobTest do
 
       mob_server =
         start_supervised!(
-          {Gameserver.MobServer, world_server: ctx.world_server, mob_count: 0},
+          {Gameserver.MobServer,
+           world_server: ctx.world_server, mob_count: 0, entity_server: ctx.entity_server},
           id: :mob_server
         )
 
@@ -157,6 +226,7 @@ defmodule Gameserver.MobTest do
         id: mob_id,
         name: "goblin",
         spawn_pos: spawn_pos,
+        entity_server: ctx.entity_server,
         world_server: ctx.world_server,
         combat_server: ctx.combat_server,
         mob_server: mob_server,
@@ -207,6 +277,7 @@ defmodule Gameserver.MobTest do
         id: mob_id,
         name: "goblin",
         spawn_pos: {px + 1, py},
+        entity_server: ctx.entity_server,
         world_server: ctx.world_server,
         combat_server: ctx.combat_server
       }
@@ -245,6 +316,7 @@ defmodule Gameserver.MobTest do
         name: "goblin",
         spawn_pos: {px + 1, py},
         abilities: [:melee_strike],
+        entity_server: ctx.entity_server,
         world_server: ctx.world_server,
         combat_server: ctx.combat_server
       }
@@ -329,6 +401,7 @@ defmodule Gameserver.MobTest do
         name: "goblin",
         spawn_pos: {px + 1, py},
         abilities: [:upper_cut],
+        entity_server: ctx.entity_server,
         world_server: ctx.world_server,
         combat_server: ctx.combat_server
       }
@@ -361,6 +434,7 @@ defmodule Gameserver.MobTest do
         name: "goblin",
         spawn_pos: floor_pos(ctx.world_server),
         abilities: [],
+        entity_server: ctx.entity_server,
         world_server: ctx.world_server,
         combat_server: ctx.combat_server
       }
@@ -396,6 +470,7 @@ defmodule Gameserver.MobTest do
         name: "goblin",
         spawn_pos: {px + 1, py},
         abilities: [:melee_strike],
+        entity_server: ctx.entity_server,
         world_server: ctx.world_server,
         combat_server: ctx.combat_server
       }
@@ -441,6 +516,7 @@ defmodule Gameserver.MobTest do
         name: "goblin",
         spawn_pos: {px + 1, py},
         abilities: [:melee_strike, :upper_cut],
+        entity_server: ctx.entity_server,
         world_server: ctx.world_server,
         combat_server: ctx.combat_server
       }
@@ -488,6 +564,7 @@ defmodule Gameserver.MobTest do
         id: id,
         name: "goblin",
         spawn_pos: spawn_pos,
+        entity_server: ctx.entity_server,
         world_server: ctx.world_server
       }
 
