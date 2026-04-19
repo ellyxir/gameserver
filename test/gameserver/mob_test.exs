@@ -42,6 +42,7 @@ defmodule Gameserver.MobTest do
         id: mob_id,
         name: "goblin",
         spawn_pos: floor_pos(ctx.world_server),
+        entity_server: ctx.entity_server,
         world_server: ctx.world_server
       }
 
@@ -76,6 +77,7 @@ defmodule Gameserver.MobTest do
         name: "goblin",
         spawn_pos: {px + 1, py},
         abilities: [:melee_strike],
+        entity_server: ctx.entity_server,
         world_server: ctx.world_server,
         combat_server: ctx.combat_server
       }
@@ -114,6 +116,7 @@ defmodule Gameserver.MobTest do
         id: mob_id,
         name: "goblin",
         spawn_pos: {px + 1, py},
+        entity_server: ctx.entity_server,
         world_server: ctx.world_server,
         combat_server: ctx.combat_server
       }
@@ -144,7 +147,8 @@ defmodule Gameserver.MobTest do
 
       mob_server =
         start_supervised!(
-          {Gameserver.MobServer, world_server: ctx.world_server, mob_count: 0},
+          {Gameserver.MobServer,
+           world_server: ctx.world_server, mob_count: 0, entity_server: ctx.entity_server},
           id: :mob_server
         )
 
@@ -157,6 +161,7 @@ defmodule Gameserver.MobTest do
         id: mob_id,
         name: "goblin",
         spawn_pos: spawn_pos,
+        entity_server: ctx.entity_server,
         world_server: ctx.world_server,
         combat_server: ctx.combat_server,
         mob_server: mob_server,
@@ -207,6 +212,7 @@ defmodule Gameserver.MobTest do
         id: mob_id,
         name: "goblin",
         spawn_pos: {px + 1, py},
+        entity_server: ctx.entity_server,
         world_server: ctx.world_server,
         combat_server: ctx.combat_server
       }
@@ -245,6 +251,7 @@ defmodule Gameserver.MobTest do
         name: "goblin",
         spawn_pos: {px + 1, py},
         abilities: [:melee_strike],
+        entity_server: ctx.entity_server,
         world_server: ctx.world_server,
         combat_server: ctx.combat_server
       }
@@ -329,6 +336,7 @@ defmodule Gameserver.MobTest do
         name: "goblin",
         spawn_pos: {px + 1, py},
         abilities: [:upper_cut],
+        entity_server: ctx.entity_server,
         world_server: ctx.world_server,
         combat_server: ctx.combat_server
       }
@@ -361,6 +369,7 @@ defmodule Gameserver.MobTest do
         name: "goblin",
         spawn_pos: floor_pos(ctx.world_server),
         abilities: [],
+        entity_server: ctx.entity_server,
         world_server: ctx.world_server,
         combat_server: ctx.combat_server
       }
@@ -396,6 +405,7 @@ defmodule Gameserver.MobTest do
         name: "goblin",
         spawn_pos: {px + 1, py},
         abilities: [:melee_strike],
+        entity_server: ctx.entity_server,
         world_server: ctx.world_server,
         combat_server: ctx.combat_server
       }
@@ -441,6 +451,7 @@ defmodule Gameserver.MobTest do
         name: "goblin",
         spawn_pos: {px + 1, py},
         abilities: [:melee_strike, :upper_cut],
+        entity_server: ctx.entity_server,
         world_server: ctx.world_server,
         combat_server: ctx.combat_server
       }
@@ -488,6 +499,7 @@ defmodule Gameserver.MobTest do
         id: id,
         name: "goblin",
         spawn_pos: spawn_pos,
+        entity_server: ctx.entity_server,
         world_server: ctx.world_server
       }
 
