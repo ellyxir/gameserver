@@ -9,6 +9,7 @@ defmodule Gameserver.Mob do
   """
 
   use GenServer, restart: :transient
+  require Logger
 
   alias Gameserver.CombatEvent
   alias Gameserver.CombatServer
@@ -69,16 +70,36 @@ defmodule Gameserver.Mob do
 
   @join_retry_ms 1000
 
+  # interval to possibly move mob
+  @mob_move_ms 10000
+
   @impl GenServer
   def handle_info(:join_world, state) do
     entity = Gameserver.Entity.new(state)
 
     case WorldServer.join_entity(entity, state.world_server) do
       {:ok, _pos} ->
+        Process.send_after(self(), :mob_move, jitter(@mob_move_ms, 0.20))
         {:noreply, state}
 
       {:error, :collision} ->
         Process.send_after(self(), :join_world, @join_retry_ms)
+        {:noreply, state}
+    end
+  end
+
+  @impl GenServer
+  def handle_info(:mob_move, %__MODULE__{id: mob_id} = state) do
+    # move in a random direction
+    dir = Enum.random([:north, :south, :west, :east])
+
+    case WorldServer.move(mob_id, dir, state.world_server) do
+      {:error, :not_found} ->
+        Logger.warning("mobid: #{mob_id}: mob_move could not find entity")
+        {:noreply, state}
+
+      _ ->
+        Process.send_after(self(), :mob_move, jitter(@mob_move_ms, 1))
         {:noreply, state}
     end
   end
@@ -148,6 +169,12 @@ defmodule Gameserver.Mob do
   @impl GenServer
   def handle_info({:combat_event, _event}, state) do
     {:noreply, state}
+  end
+
+  # adds positive jitter to a value, result is always >= val
+  @spec jitter(number(), number()) :: non_neg_integer()
+  defp jitter(val, perc) when is_number(val) and is_number(perc) do
+    round(val + val * :rand.uniform() * perc)
   end
 
   # picks a random ability from the mob's list and uses it on the target.
