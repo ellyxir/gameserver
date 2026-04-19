@@ -470,6 +470,39 @@ defmodule GameserverWeb.WorldLiveTest do
       refute has_element?(view, "#combat-log div", "for 3")
     end
 
+    test "target is cleared when target dies, allowing self-cast", %{conn: conn} do
+      {:ok, user} = User.new("healer")
+      {:ok, {px, py}} = WorldServer.join_user(user)
+
+      alias Gameserver.{Entity, EntityServer, Stat}
+
+      # place mob east of player
+      mob = Entity.new(name: "goblin", type: :mob, pos: {px + 1, py})
+      {:ok, _pos} = WorldServer.join_entity(mob)
+
+      # weaken mob to 1 HP so collision kills it
+      {:ok, _} =
+        EntityServer.update_entity(mob.id, fn entity ->
+          hp = Gameserver.HpStat.apply_damage(entity.stats.hp, 9)
+          %{entity | stats: %{entity.stats | hp: hp}}
+        end)
+
+      {:ok, view, _html} = live(conn, ~p"/world?user_id=#{user.id}")
+
+      # collide to set target and kill the 1hp mob
+      render_keydown(view, "keydown", %{"key" => "d"})
+
+      {:ok, entity_before} = EntityServer.get_entity(user.id)
+      hp_before = Stat.effective(entity_before.stats.hp, entity_before.stats)
+
+      # use heal (range 3) - should self-cast since target is dead and cleared
+      render_click(view, "use_ability", %{"ability-id" => "heal"})
+
+      {:ok, entity_after} = EntityServer.get_entity(user.id)
+      hp_after = Stat.effective(entity_after.stats.hp, entity_after.stats)
+      assert hp_after > hp_before
+    end
+
     test "number hotkey triggers ability by slot index", %{conn: conn} do
       {:ok, user} = User.new("hotkeyer")
       {:ok, {px, py}} = WorldServer.join_user(user)
