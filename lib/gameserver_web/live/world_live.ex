@@ -205,6 +205,15 @@ defmodule GameserverWeb.WorldLive do
   def handle_info({:combat_event, %CombatEvent{} = event}, socket) do
     message = format_combat_message(event, socket.assigns)
     entry = %{id: UUID.generate(), message: message}
+
+    # clear target_id if it just died
+    socket =
+      if event.defender_id == socket.assigns.target_id and event.dead do
+        assign(socket, target_id: nil)
+      else
+        socket
+      end
+
     {:noreply, stream_insert(socket, :combat_log, entry, limit: -@combat_log_limit)}
   end
 
