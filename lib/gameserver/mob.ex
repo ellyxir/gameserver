@@ -92,6 +92,13 @@ defmodule Gameserver.Mob do
   end
 
   @impl GenServer
+  def handle_info(:mob_move, %__MODULE__{aggro_target: target_id} = state)
+      when not is_nil(target_id) do
+    # dont move when we are aggro'd
+    Process.send_after(self(), :mob_move, jitter(@mob_move_ms, 1))
+    {:noreply, state}
+  end
+
   def handle_info(:mob_move, %__MODULE__{id: mob_id} = state) do
     # move in a random direction
     dir = Enum.random([:north, :south, :west, :east])
