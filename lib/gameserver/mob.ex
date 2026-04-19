@@ -71,7 +71,7 @@ defmodule Gameserver.Mob do
   @join_retry_ms 1000
 
   # interval to possibly move mob
-  @mob_move_ms 10000
+  @mob_move_ms 10_000
 
   @impl GenServer
   def handle_info(:join_world, state) do
