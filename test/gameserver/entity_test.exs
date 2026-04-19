@@ -155,5 +155,15 @@ defmodule Gameserver.EntityTest do
       updated = Entity.check_death(entity)
       assert updated.stats.dead
     end
+
+    test "dead entities cannot move" do
+      entity = Entity.new(name: "casper", type: :mob, pos: {0, 0}, stats: Stats.new(dead: true))
+      assert {:error, :dead} = Entity.can_move(entity)
+
+      entity =
+        Entity.new(name: "resus_casper", type: :mob, pos: {0, 0}, stats: Stats.new(dead: false))
+
+      assert :ok = Entity.can_move(entity)
+    end
   end
 end
