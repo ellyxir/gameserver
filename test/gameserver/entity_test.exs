@@ -156,4 +156,16 @@ defmodule Gameserver.EntityTest do
       assert updated.stats.dead
     end
   end
+
+  describe "can_move/1" do
+    test "returns :ok for alive entity" do
+      entity = Entity.new(name: "alive", type: :mob, pos: {0, 0}, stats: Stats.new(dead: false))
+      assert :ok = Entity.can_move(entity)
+    end
+
+    test "returns error for dead entity" do
+      entity = Entity.new(name: "dead", type: :mob, pos: {0, 0}, stats: Stats.new(dead: true))
+      assert {:error, :dead} = Entity.can_move(entity)
+    end
+  end
 end

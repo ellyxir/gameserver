@@ -58,7 +58,8 @@ defmodule GameserverWeb.WorldLive do
              abilities: abilities,
              ability_seconds_remaining: %{},
              cooldown_refresh_ref: nil,
-             target_id: nil
+             target_id: nil,
+             dead: false
            )
            |> refresh_cooldown_state()
            |> stream(:combat_log, [], limit: -@combat_log_limit)}
@@ -85,6 +86,10 @@ defmodule GameserverWeb.WorldLive do
   @ability_hotkeys Map.new(1..9, fn n -> {Integer.to_string(n), n - 1} end)
 
   @impl Phoenix.LiveView
+  def handle_event("keydown", _params, %{assigns: %{dead: true}} = socket) do
+    {:noreply, socket}
+  end
+
   def handle_event("keydown", %{"key" => key}, socket) do
     cond do
       direction = Map.get(@key_to_direction, key) ->
@@ -98,11 +103,33 @@ defmodule GameserverWeb.WorldLive do
     end
   end
 
+  def handle_event("tile-click", _params, %{assigns: %{dead: true}} = socket) do
+    {:noreply, socket}
+  end
+
   def handle_event("tile-click", %{"x" => x, "y" => y}, socket) do
     case direction_from(my_position(socket), GameMap.parse_coord(x, y)) do
       nil -> {:noreply, socket}
       direction -> move_player(socket, direction)
     end
+  end
+
+  def handle_event("use_ability", _params, %{assigns: %{dead: true}} = socket) do
+    {:noreply, socket}
+  end
+
+  def handle_event("player_respawn", _params, socket) do
+    user_id = socket.assigns.user_id
+    {:ok, spawn_pos} = WorldServer.get_map() |> GameMap.get_spawn_point()
+
+    {:ok, _} =
+      EntityServer.update_entity(user_id, fn entity ->
+        hp = Gameserver.HpStat.apply_delta(entity.stats.hp, 1)
+        %{entity | stats: %{entity.stats | hp: hp, dead: false}}
+      end)
+
+    :ok = WorldServer.update_position(user_id, spawn_pos)
+    {:noreply, assign(socket, dead: false)}
   end
 
   def handle_event("use_ability", %{"ability-id" => ability_str}, socket) do
@@ -206,12 +233,18 @@ defmodule GameserverWeb.WorldLive do
     message = format_combat_message(event, socket.assigns)
     entry = %{id: UUID.generate(), message: message}
 
-    # clear target_id if it just died
     socket =
-      if event.defender_id == socket.assigns.target_id and event.dead do
-        assign(socket, target_id: nil)
-      else
-        socket
+      cond do
+        # player died
+        event.defender_id == socket.assigns.user_id and event.dead ->
+          assign(socket, dead: true, target_id: nil)
+
+        # target died
+        event.defender_id == socket.assigns.target_id and event.dead ->
+          assign(socket, target_id: nil)
+
+        true ->
+          socket
       end
 
     {:noreply, stream_insert(socket, :combat_log, entry, limit: -@combat_log_limit)}

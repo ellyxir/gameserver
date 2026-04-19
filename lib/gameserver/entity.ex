@@ -129,6 +129,14 @@ defmodule Gameserver.Entity do
   end
 
   @doc """
+  Convenience function, returns :ok if entity can move
+  dead mobs/players cannot move
+  """
+  @spec can_move(t()) :: :ok | {:error, :dead}
+  def can_move(%__MODULE__{stats: %Stats{dead: true}}), do: {:error, :dead}
+  def can_move(%__MODULE__{stats: %Stats{dead: false}}), do: :ok
+
+  @doc """
   Marks the entity dead if effective HP has reached zero.
   Already-dead entities stay dead. Sticky — never resurrects.
   """
